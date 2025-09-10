@@ -1,0 +1,19 @@
+{
+  "name": "pos-system",
+  "version": "1.0.0",
+  "description": "Point of Sale System with SQLite, Barcode Support, and User Management",
+  "main": "backend/server.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd backend && node server.js",
+    "client": "cd frontend && npm start",
+    "build": "cd frontend && npm run build",
+    "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+  },
+  "keywords": ["pos", "point-of-sale", "sqlite", "barcode", "retail"],
+  "author": "POS System Developer",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
