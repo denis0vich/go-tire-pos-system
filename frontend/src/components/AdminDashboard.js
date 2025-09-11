@@ -705,6 +705,80 @@ const AdminDashboard = () => {
           </button>
         </div>
       </div>
+
+      {/* Thermal Printer Settings */}
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">🖨️ Thermal Printer Settings</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Printer Width
+            </label>
+            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <option value="58mm">58mm (Standard)</option>
+              <option value="80mm">80mm (Wide)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Print Quality
+            </label>
+            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <option value="normal">Normal</option>
+              <option value="high">High Quality</option>
+              <option value="draft">Draft (Fast)</option>
+            </select>
+          </div>
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="auto-cut"
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <label htmlFor="auto-cut" className="ml-2 block text-sm text-gray-700">
+              Auto-cut paper after printing
+            </label>
+          </div>
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="open-drawer"
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <label htmlFor="open-drawer" className="ml-2 block text-sm text-gray-700">
+              Open cash drawer after sale
+            </label>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Receipt Footer Message
+            </label>
+            <textarea
+              rows="3"
+              placeholder="Enter custom message for receipt footer..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >Thank you for your business!
+Drive safely! 🚗
+Warranty: 30 days on parts
+Returns: 7 days with receipt</textarea>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h4 className="font-semibold text-blue-900 mb-2">📋 Printer Setup Instructions:</h4>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• Connect thermal printer via USB</li>
+              <li>• Install printer drivers if required</li>
+              <li>• Set printer as default in system settings</li>
+              <li>• Test print using browser's print function</li>
+              <li>• Adjust paper width settings above</li>
+            </ul>
+          </div>
+        </div>
+        <div className="mt-6">
+          <button className="btn btn-primary">
+            Save Printer Settings
+          </button>
+        </div>
+      </div>
     </div>
   );
 

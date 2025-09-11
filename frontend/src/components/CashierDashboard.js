@@ -229,6 +229,172 @@ const CashierDashboard = () => {
     }
   };
 
+  const printThermalReceipt = () => {
+    if (!lastSale) return;
+
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    
+    // Generate thermal printer formatted HTML
+    const thermalHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt</title>
+        <style>
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+          body {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.2;
+            margin: 0;
+            padding: 5px;
+            width: 80mm;
+            background: white;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 1px dashed #000;
+            padding-bottom: 5px;
+            margin-bottom: 5px;
+          }
+          .header h1 {
+            font-size: 14px;
+            font-weight: bold;
+            margin: 0 0 2px 0;
+            text-transform: uppercase;
+          }
+          .header p {
+            margin: 1px 0;
+            font-size: 10px;
+          }
+          .separator {
+            text-align: center;
+            margin: 3px 0;
+            font-size: 10px;
+          }
+          .item {
+            margin-bottom: 3px;
+            font-size: 11px;
+          }
+          .item-name {
+            font-weight: bold;
+            margin-bottom: 1px;
+          }
+          .item-details {
+            font-size: 9px;
+            color: #666;
+            margin-bottom: 1px;
+          }
+          .item-total {
+            text-align: right;
+            font-weight: bold;
+          }
+          .totals {
+            border-top: 1px dashed #000;
+            padding-top: 5px;
+            margin-top: 5px;
+          }
+          .total-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+            font-size: 11px;
+          }
+          .total-line.final {
+            font-size: 13px;
+            font-weight: bold;
+            border-top: 1px solid #000;
+            padding-top: 3px;
+            margin-top: 3px;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 10px;
+            padding-top: 5px;
+            border-top: 1px dashed #000;
+            font-size: 9px;
+          }
+          .footer p {
+            margin: 1px 0;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>🏁 Premium Auto Parts Center</h1>
+          <p>123 Auto Way, Auto City, AC 12345</p>
+          <p>Tel: (555) AUTO-123 | Web: autoparts.com</p>
+          <div class="separator">================================</div>
+          <p>Sale ID: #${lastSale.sale.id}</p>
+          <p>Date: ${new Date(lastSale.sale.created_at).toLocaleDateString()}</p>
+          <p>Time: ${new Date(lastSale.sale.created_at).toLocaleTimeString()}</p>
+          <p>Cashier: ${lastSale.sale.cashier_name}</p>
+          <div class="separator">================================</div>
+        </div>
+
+        <div class="items">
+          ${lastSale.items.map(item => `
+            <div class="item">
+              <div class="item-name">${item.product_name}</div>
+              <div class="item-details">Qty: ${item.quantity} @ $${parseFloat(item.unit_price).toFixed(2)}</div>
+              <div class="item-total">$${parseFloat(item.total_price).toFixed(2)}</div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="totals">
+          <div class="total-line">
+            <span>Subtotal:</span>
+            <span>$${parseFloat(lastSale.receipt_data.subtotal).toFixed(2)}</span>
+          </div>
+          <div class="total-line">
+            <span>Tax (8.5%):</span>
+            <span>$${parseFloat(lastSale.receipt_data.tax_amount).toFixed(2)}</span>
+          </div>
+          <div class="separator">================================</div>
+          <div class="total-line final">
+            <span>TOTAL:</span>
+            <span>$${parseFloat(lastSale.receipt_data.total_amount).toFixed(2)}</span>
+          </div>
+          <div class="total-line">
+            <span>Payment (${lastSale.sale.payment_method.toUpperCase()}):</span>
+            <span>$${parseFloat(lastSale.receipt_data.payment_received || lastSale.receipt_data.total_amount).toFixed(2)}</span>
+          </div>
+          <div class="total-line">
+            <span>Change:</span>
+            <span>$${parseFloat(lastSale.receipt_data.change_given || 0).toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div class="separator">================================</div>
+          <p><strong>Thank you for your business!</strong></p>
+          <p>Drive safely! 🚗</p>
+          <p>Warranty: 30 days on parts</p>
+          <p>Returns: 7 days with receipt</p>
+          <div class="separator">================================</div>
+          <p>Auto Parts Center</p>
+          <p>Your trusted automotive partner</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(thermalHTML);
+    printWindow.document.close();
+    
+    // Wait for content to load, then print
+    printWindow.onload = () => {
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+    };
+  };
+
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -606,21 +772,27 @@ const CashierDashboard = () => {
               <div className="receipt-header">
                 <h3>🏁 Premium Auto Parts Center</h3>
                 <p>123 Auto Way, Auto City, AC 12345</p>
-                <p>Tel: (555) AUTO-123</p>
-                <hr />
-                <p>Sale ID: {lastSale.sale.id}</p>
-                <p>Date: {new Date(lastSale.sale.created_at).toLocaleString()}</p>
+                <p>Tel: (555) AUTO-123 | Web: autoparts.com</p>
+                <p>================================</p>
+                <p>Sale ID: #{lastSale.sale.id}</p>
+                <p>Date: {new Date(lastSale.sale.created_at).toLocaleDateString()}</p>
+                <p>Time: {new Date(lastSale.sale.created_at).toLocaleTimeString()}</p>
                 <p>Cashier: {lastSale.sale.cashier_name}</p>
+                <p>================================</p>
               </div>
 
               <div className="receipt-items">
                 {lastSale.items.map(item => (
                   <div key={item.id} className="receipt-item">
-                    <div>
-                      <div>{item.product_name}</div>
-                      <div>{item.quantity} x ${parseFloat(item.unit_price).toFixed(2)}</div>
+                    <div style={{ flex: 1 }}>
+                      <div className="product-name">{item.product_name}</div>
+                      <div className="product-details">
+                        Qty: {item.quantity} @ ${parseFloat(item.unit_price).toFixed(2)}
+                      </div>
                     </div>
-                    <div>${parseFloat(item.total_price).toFixed(2)}</div>
+                    <div style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                      ${parseFloat(item.total_price).toFixed(2)}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -631,15 +803,18 @@ const CashierDashboard = () => {
                   <span>${parseFloat(lastSale.receipt_data.subtotal).toFixed(2)}</span>
                 </div>
                 <div className="receipt-item">
-                  <span>Tax:</span>
+                  <span>Tax (8.5%):</span>
                   <span>${parseFloat(lastSale.receipt_data.tax_amount).toFixed(2)}</span>
                 </div>
                 <div className="receipt-item">
-                  <span><strong>Total:</strong></span>
+                  <span>================================</span>
+                </div>
+                <div className="receipt-item">
+                  <span><strong>TOTAL:</strong></span>
                   <span><strong>${parseFloat(lastSale.receipt_data.total_amount).toFixed(2)}</strong></span>
                 </div>
                 <div className="receipt-item">
-                  <span>Payment ({lastSale.sale.payment_method}):</span>
+                  <span>Payment ({lastSale.sale.payment_method.toUpperCase()}):</span>
                   <span>${parseFloat(lastSale.receipt_data.payment_received || lastSale.receipt_data.total_amount).toFixed(2)}</span>
                 </div>
                 <div className="receipt-item">
@@ -648,16 +823,22 @@ const CashierDashboard = () => {
                 </div>
               </div>
 
-              <div className="text-center mt-4">
-                <p>Thank you for choosing Premium Auto Parts Center!</p>
+              <div className="receipt-footer">
+                <p>================================</p>
+                <p><strong>Thank you for your business!</strong></p>
                 <p>Drive safely! 🚗</p>
+                <p>Warranty: 30 days on parts</p>
+                <p>Returns: 7 days with receipt</p>
+                <p>================================</p>
+                <p>Auto Parts Center</p>
+                <p>Your trusted automotive partner</p>
               </div>
             </div>
 
             <div className="flex gap-2 mt-4">
               <button
-                onClick={() => window.print()}
-                className="btn btn-primary flex-1"
+                onClick={() => printThermalReceipt()}
+                className="btn btn-primary flex-1 print-button"
               >
                 <Receipt className="w-4 h-4" />
                 Print Receipt

@@ -599,15 +599,16 @@
   color: #6b7280;
 }
 
-/* Receipt styles */
+/* Receipt styles - Optimized for thermal printers */
 .receipt {
   width: 300px;
   font-family: 'Courier New', monospace;
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: 11px;
+  line-height: 1.3;
   background-color: white;
-  padding: 1rem;
+  padding: 0.5rem;
   border: 1px solid #e5e7eb;
+  max-width: 80mm; /* Standard thermal printer width */
 }
 
 .receipt-header {
@@ -617,10 +618,35 @@
   margin-bottom: 0.5rem;
 }
 
+.receipt-header h3 {
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.receipt-header p {
+  margin: 0.1rem 0;
+  font-size: 10px;
+}
+
 .receipt-item {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.2rem;
+  font-size: 11px;
+}
+
+.receipt-item .product-name {
+  font-weight: bold;
+  margin-bottom: 0.1rem;
+}
+
+.receipt-item .product-details {
+  font-size: 9px;
+  color: #666;
+  margin-bottom: 0.1rem;
 }
 
 .receipt-total {
@@ -628,6 +654,72 @@
   padding-top: 0.5rem;
   margin-top: 0.5rem;
   font-weight: bold;
+}
+
+.receipt-total .receipt-item {
+  font-size: 12px;
+  margin-bottom: 0.3rem;
+}
+
+.receipt-total .receipt-item:last-child {
+  font-size: 14px;
+  font-weight: bold;
+  border-top: 1px solid #000;
+  padding-top: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+.receipt-footer {
+  text-align: center;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #000;
+  font-size: 10px;
+}
+
+/* Print-specific styles for thermal printers */
+@media print {
+  .receipt {
+    width: 80mm !important;
+    max-width: 80mm !important;
+    margin: 0 !important;
+    padding: 0.25rem !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+    background: white !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  
+  .receipt-header h3 {
+    font-size: 12px !important;
+  }
+  
+  .receipt-header p {
+    font-size: 9px !important;
+  }
+  
+  .receipt-item {
+    font-size: 10px !important;
+    margin-bottom: 0.15rem !important;
+  }
+  
+  .receipt-total .receipt-item {
+    font-size: 11px !important;
+  }
+  
+  .receipt-total .receipt-item:last-child {
+    font-size: 13px !important;
+  }
+  
+  .receipt-footer {
+    font-size: 9px !important;
+  }
+  
+  /* Hide print button when printing */
+  .print-button {
+    display: none !important;
+  }
 }
 
 /* Modal styles */
