@@ -232,7 +232,9 @@ const CashierDashboard = () => {
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.barcode?.includes(searchTerm) ||
-    product.category?.toLowerCase().includes(searchTerm.toLowerCase())
+    product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.tire_size?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const totals = calculateTotal();
@@ -244,7 +246,7 @@ const CashierDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Cashier Dashboard</h1>
+              <h1 className="text-2xl font-bold text-gray-900">🏁 Tire Store POS</h1>
               <p className="text-sm text-gray-500">Welcome, {user?.username}</p>
             </div>
             <div className="flex items-center space-x-4">
@@ -270,8 +272,8 @@ const CashierDashboard = () => {
           {/* Primary Barcode Scanner */}
           <div className="pos-scanner-card">
             <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold mb-2">🔍 Tire Shop POS</h2>
-              <p className="text-lg opacity-90">Scan or Enter Product Barcode</p>
+              <h2 className="text-2xl font-bold mb-2">🔍 Tire & Auto Parts Scanner</h2>
+              <p className="text-lg opacity-90">Scan tire barcode or search manually</p>
             </div>
             
             <form onSubmit={handleBarcodeSubmit} className="space-y-6">
@@ -282,7 +284,7 @@ const CashierDashboard = () => {
                   type="text"
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="Scan barcode or type manually..."
+                  placeholder="Scan tire barcode or enter manually..."
                   className="pos-scanner-input"
                 />
               </div>
@@ -343,7 +345,7 @@ const CashierDashboard = () => {
               className="pos-action-btn"
             >
               <Search className="w-8 h-8 text-blue-500" />
-              <span className="font-semibold text-gray-700">Search Products</span>
+              <span className="font-semibold text-gray-700">Search Tires</span>
             </button>
             
             <button
@@ -386,19 +388,19 @@ const CashierDashboard = () => {
             </h4>
             <div className="grid grid-cols-2 gap-4 text-sm text-gray-700">
               <div>
-                <p className="font-medium mb-1">🔍 Scanning:</p>
+                <p className="font-medium mb-1">🔍 Tire Scanning:</p>
                 <p>Use barcode scanner or type manually</p>
               </div>
               <div>
-                <p className="font-medium mb-1">🔍 Search:</p>
-                <p>Find products when barcode fails</p>
+                <p className="font-medium mb-1">🔍 Tire Search:</p>
+                <p>Find tires when barcode fails</p>
               </div>
               <div>
-                <p className="font-medium mb-1">🔓 Override:</p>
+                <p className="font-medium mb-1">🔓 Admin Override:</p>
                 <p>Admin barcode: ADMIN_OVERRIDE_2024</p>
               </div>
               <div>
-                <p className="font-medium mb-1">⚡ Speed:</p>
+                <p className="font-medium mb-1">⚡ Quick Entry:</p>
                 <p>Scanner stays focused for rapid entry</p>
               </div>
             </div>
@@ -410,7 +412,7 @@ const CashierDashboard = () => {
           <div className="cart-header">
             <h3 className="cart-title">
               <ShoppingCart className="w-6 h-6" />
-              Shopping Cart ({cart.length})
+              Tire Cart ({cart.length})
             </h3>
           </div>
 
@@ -418,8 +420,8 @@ const CashierDashboard = () => {
             {cart.length === 0 ? (
               <div className="text-center py-12">
                 <ShoppingCart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500 text-lg">Cart is empty</p>
-                <p className="text-gray-400 text-sm">Scan items to get started</p>
+                <p className="text-gray-500 text-lg">Tire cart is empty</p>
+                <p className="text-gray-400 text-sm">Scan tires to get started</p>
               </div>
             ) : (
               cart.map(item => (
@@ -608,9 +610,9 @@ const CashierDashboard = () => {
 
             <div className="receipt">
               <div className="receipt-header">
-                <h3>Your Store Name</h3>
-                <p>123 Main St, City, State 12345</p>
-                <p>Tel: (555) 123-4567</p>
+                <h3>🏁 Premium Tire Center</h3>
+                <p>123 Auto Way, Tire City, TC 12345</p>
+                <p>Tel: (555) TIRE-123</p>
                 <hr />
                 <p>Sale ID: {lastSale.sale.id}</p>
                 <p>Date: {new Date(lastSale.sale.created_at).toLocaleString()}</p>
@@ -653,7 +655,8 @@ const CashierDashboard = () => {
               </div>
 
               <div className="text-center mt-4">
-                <p>Thank you for your business!</p>
+                <p>Thank you for choosing Premium Tire Center!</p>
+                <p>Drive safely! 🚗</p>
               </div>
             </div>
 
@@ -681,7 +684,7 @@ const CashierDashboard = () => {
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '600px' }}>
             <div className="modal-header">
-              <h3 className="modal-title">Search Products</h3>
+              <h3 className="modal-title">Search Tires & Auto Parts</h3>
               <button
                 onClick={() => setShowProductSearch(false)}
                 className="modal-close"
@@ -697,7 +700,7 @@ const CashierDashboard = () => {
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by name, category, or barcode..."
+                  placeholder="Search by tire brand, size, or barcode..."
                   className="form-input pl-10"
                   autoFocus
                 />
@@ -706,7 +709,7 @@ const CashierDashboard = () => {
 
             <div className="max-h-96 overflow-y-auto">
               {filteredProducts.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">No products found</p>
+                <p className="text-center text-gray-500 py-8">No tires found</p>
               ) : (
                 <div className="space-y-2">
                   {filteredProducts.map(product => (
@@ -727,7 +730,7 @@ const CashierDashboard = () => {
                         <div>
                           <h4 className="font-medium">{product.name}</h4>
                           <p className="text-sm text-gray-500">
-                            {product.category} • Barcode: {product.barcode || 'N/A'}
+                            {product.brand} • {product.tire_size} • {product.category}
                           </p>
                         </div>
                         <div className="text-right">

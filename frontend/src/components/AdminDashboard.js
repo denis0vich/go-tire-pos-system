@@ -44,7 +44,9 @@ const AdminDashboard = () => {
     stock: '',
     category: '',
     description: '',
-    min_stock: ''
+    min_stock: '',
+    tire_size: '',
+    brand: ''
   });
   
   // Users data
@@ -241,7 +243,9 @@ const AdminDashboard = () => {
         stock: product.stock || '',
         category: product.category || '',
         description: product.description || '',
-        min_stock: product.min_stock || ''
+        min_stock: product.min_stock || '',
+        tire_size: product.tire_size || '',
+        brand: product.brand || ''
       });
     } else {
       setEditingProduct(null);
@@ -253,7 +257,9 @@ const AdminDashboard = () => {
         stock: '',
         category: '',
         description: '',
-        min_stock: ''
+        min_stock: '',
+        tire_size: '',
+        brand: ''
       });
     }
     setShowProductModal(true);
@@ -353,14 +359,14 @@ const AdminDashboard = () => {
   const renderDashboard = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Dashboard Overview</h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">🏁 Tire Store Dashboard</h2>
         
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Products</p>
+                <p className="text-sm font-medium text-gray-600">Total Tires</p>
                 <p className="text-3xl font-bold text-gray-900">{products.length}</p>
               </div>
               <div className="p-3 bg-blue-100 rounded-lg">
@@ -372,7 +378,7 @@ const AdminDashboard = () => {
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Low Stock Items</p>
+                <p className="text-sm font-medium text-gray-600">Low Stock Tires</p>
                 <p className="text-3xl font-bold text-red-600">{analytics.lowStockProducts.length}</p>
               </div>
               <div className="p-3 bg-red-100 rounded-lg">
@@ -426,7 +432,7 @@ const AdminDashboard = () => {
 
           {/* Top Products Chart */}
           <div className="bg-white rounded-xl shadow-sm border p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Selling Products</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Selling Tires</h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={analytics.topProducts}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -444,7 +450,7 @@ const AdminDashboard = () => {
           <div className="bg-red-50 border border-red-200 rounded-xl p-6">
             <div className="flex items-center mb-4">
               <AlertTriangle className="w-5 h-5 text-red-600 mr-2" />
-              <h3 className="text-lg font-semibold text-red-800">Low Stock Alert</h3>
+              <h3 className="text-lg font-semibold text-red-800">Low Tire Stock Alert</h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {analytics.lowStockProducts.map(product => (
@@ -464,13 +470,13 @@ const AdminDashboard = () => {
   const renderProducts = () => (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Product Management</h2>
+        <h2 className="text-2xl font-bold text-gray-900">Tire Inventory Management</h2>
         <button
           onClick={() => openProductModal()}
           className="btn btn-primary flex items-center gap-2"
         >
           <Plus className="w-4 h-4" />
-          Add Product
+          Add Tire
         </button>
       </div>
 
@@ -479,11 +485,11 @@ const AdminDashboard = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Barcode</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tire</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -499,7 +505,10 @@ const AdminDashboard = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.barcode || 'N/A'}
+                    {product.brand || 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {product.tire_size || 'N/A'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     ${parseFloat(product.price).toFixed(2)}
@@ -515,9 +524,6 @@ const AdminDashboard = () => {
                         <AlertTriangle className="w-4 h-4 text-red-500 ml-2" />
                       )}
                     </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">
-                    {product.category || 'Uncategorized'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-2">
@@ -551,7 +557,7 @@ const AdminDashboard = () => {
         <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between p-6 border-b">
             <h3 className="text-lg font-semibold text-gray-900">
-              {editingProduct ? 'Edit Product' : 'Add New Product'}
+              {editingProduct ? 'Edit Tire' : 'Add New Tire'}
             </h3>
             <button
               onClick={() => setShowProductModal(false)}
@@ -565,7 +571,7 @@ const AdminDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Product Name *
+                  Tire Name *
                 </label>
                 <input
                   type="text"
@@ -644,10 +650,66 @@ const AdminDashboard = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Category
                 </label>
-                <input
-                  type="text"
+                <select
                   value={productForm.category}
                   onChange={(e) => setProductForm({...productForm, category: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select Category</option>
+                  <option value="Passenger Tires">Passenger Tires</option>
+                  <option value="Truck Tires">Truck Tires</option>
+                  <option value="SUV Tires">SUV Tires</option>
+                  <option value="Performance Tires">Performance Tires</option>
+                  <option value="Winter Tires">Winter Tires</option>
+                  <option value="All-Season Tires">All-Season Tires</option>
+                  <option value="Motorcycle Tires">Motorcycle Tires</option>
+                  <option value="Tire Accessories">Tire Accessories</option>
+                  <option value="Wheels">Wheels</option>
+                  <option value="Brake Pads">Brake Pads</option>
+                  <option value="Oil & Fluids">Oil & Fluids</option>
+                  <option value="Auto Parts">Auto Parts</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Brand
+                </label>
+                <select
+                  value={productForm.brand}
+                  onChange={(e) => setProductForm({...productForm, brand: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select Brand</option>
+                  <option value="Michelin">Michelin</option>
+                  <option value="Bridgestone">Bridgestone</option>
+                  <option value="Continental">Continental</option>
+                  <option value="Goodyear">Goodyear</option>
+                  <option value="Pirelli">Pirelli</option>
+                  <option value="Dunlop">Dunlop</option>
+                  <option value="Yokohama">Yokohama</option>
+                  <option value="Hankook">Hankook</option>
+                  <option value="Kumho">Kumho</option>
+                  <option value="Toyo">Toyo</option>
+                  <option value="Falken">Falken</option>
+                  <option value="Nitto">Nitto</option>
+                  <option value="General">General</option>
+                  <option value="Cooper">Cooper</option>
+                  <option value="BFGoodrich">BFGoodrich</option>
+                  <option value="Firestone">Firestone</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tire Size (e.g., 225/65R17)
+                </label>
+                <input
+                  type="text"
+                  value={productForm.tire_size}
+                  onChange={(e) => setProductForm({...productForm, tire_size: e.target.value})}
+                  placeholder="225/65R17"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -679,7 +741,7 @@ const AdminDashboard = () => {
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
               >
                 <Save className="w-4 h-4" />
-                {loading ? 'Saving...' : (editingProduct ? 'Update Product' : 'Create Product')}
+                {loading ? 'Saving...' : (editingProduct ? 'Update Tire' : 'Create Tire')}
               </button>
             </div>
           </form>
@@ -690,7 +752,7 @@ const AdminDashboard = () => {
 
   const sidebarItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'products', label: 'Products', icon: Package },
+    { id: 'products', label: 'Tires', icon: Package },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings },
@@ -702,7 +764,7 @@ const AdminDashboard = () => {
       {/* Sidebar */}
       <div className="w-64 bg-white shadow-sm border-r">
         <div className="p-6">
-          <h1 className="text-xl font-bold text-gray-900">Admin Panel</h1>
+          <h1 className="text-xl font-bold text-gray-900">🏁 Tire Store Admin</h1>
           <p className="text-sm text-gray-500">Welcome, {user?.username}</p>
         </div>
         
@@ -858,7 +920,7 @@ const AdminDashboard = () => {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Performance</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Tire Performance</h3>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
