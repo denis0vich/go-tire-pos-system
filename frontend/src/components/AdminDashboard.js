@@ -24,6 +24,7 @@ const AdminDashboard = () => {
   const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   
   // Dashboard data
   const [dashboardData, setDashboardData] = useState({});
@@ -73,29 +74,36 @@ const AdminDashboard = () => {
   const [backups, setBackups] = useState([]);
   
 
+  // Load all essential data when component mounts
   useEffect(() => {
-    if (activeTab === 'dashboard') {
-      fetchDashboardData();
-    } else if (activeTab === 'products') {
-      fetchProducts();
-    } else if (activeTab === 'users') {
-      fetchUsers();
-    } else if (activeTab === 'reports') {
-      fetchSalesReports();
-      fetchReportData();
-    } else if (activeTab === 'settings') {
-      fetchSettings();
-    } else if (activeTab === 'backup') {
-      fetchBackups();
-    }
-  }, [activeTab]);
+    const loadInitialData = async () => {
+      try {
+        setInitialLoading(true);
+        // Load all essential data in parallel
+        await Promise.all([
+          fetchDashboardData(),
+          fetchProducts(),
+          fetchUsers(),
+          fetchSalesReports(),
+          fetchSettings(),
+          fetchBackups()
+        ]);
+      } catch (error) {
+        console.error('Error loading initial data:', error);
+      } finally {
+        setInitialLoading(false);
+      }
+    };
 
-  // Refresh report data when period changes
+    loadInitialData();
+  }, []); // Empty dependency array - run once on mount
+
+  // Load tab-specific data when switching tabs
   useEffect(() => {
     if (activeTab === 'reports') {
       fetchReportData();
     }
-  }, [reportPeriod]);
+  }, [activeTab, reportPeriod]);
 
   const fetchDashboardData = async () => {
     try {
@@ -767,7 +775,7 @@ const AdminDashboard = () => {
   const renderDashboard = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">🏁 Auto Parts Dashboard - MODERN VERSION</h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">🏁 Auto Parts Dashboard</h2>
         
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -1254,6 +1262,19 @@ const AdminDashboard = () => {
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'backup', label: 'Backup', icon: Database },
   ];
+
+  // Show loading screen while initial data is being fetched
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-red-600 mx-auto mb-4"></div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Loading Dashboard</h2>
+          <p className="text-gray-600">Fetching your data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
