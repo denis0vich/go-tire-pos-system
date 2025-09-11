@@ -1,0 +1,49 @@
+# Dependency directories
+**/node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage & test output
+coverage
+*.lcov
+.nyc_output
+
+# Build / dist output
+dist/
+build/
+.out/
+.next/
+.nuxt/
+.svelte-kit/
+.storybook-out/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# OS / IDE junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml
+
+# Package managers
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
