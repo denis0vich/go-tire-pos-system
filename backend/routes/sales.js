@@ -146,7 +146,8 @@ router.get('/', authenticateToken, requireCashier, async (req, res) => {
 
         const db = new Database();
         let sql = `
-            SELECT s.*, u.full_name as cashier_name 
+            SELECT s.*, u.full_name as cashier_name,
+                   (SELECT COUNT(*) FROM sale_items si WHERE si.sale_id = s.id) as items_count
             FROM sales s 
             JOIN users u ON s.cashier_id = u.id 
             WHERE 1=1
@@ -343,6 +344,200 @@ router.get('/reports/summary', authenticateToken, requireAdmin, async (req, res)
     } catch (error) {
         console.error('Get sales summary error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Get sales reports by period (admin only)
+router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res) => {
+    let db;
+    try {
+        const { period } = req.params;
+        db = new Database();
+
+        console.log(`Fetching reports for period: ${period}`);
+
+        // Validate period
+        if (!['daily', 'weekly', 'monthly', 'yearly'].includes(period)) {
+            return res.status(400).json({ error: 'Invalid period. Use: daily, weekly, monthly, or yearly' });
+        }
+
+        // Get sales data grouped by period
+        let salesData = [];
+        try {
+            if (period === 'daily') {
+                salesData = await db.query(`
+                    SELECT 
+                        DATE(created_at) as period,
+                        COUNT(*) as sales_count,
+                        SUM(total_amount) as revenue,
+                        SUM(tax_amount) as tax_collected,
+                        SUM(discount_amount) as discounts_given,
+                        AVG(total_amount) as avg_sale_amount
+                    FROM sales 
+                    GROUP BY DATE(created_at)
+                    ORDER BY period DESC
+                    LIMIT 50
+                `);
+            } else if (period === 'weekly') {
+                salesData = await db.query(`
+                    SELECT 
+                        strftime('%Y-W%W', created_at) as period,
+                        COUNT(*) as sales_count,
+                        SUM(total_amount) as revenue,
+                        SUM(tax_amount) as tax_collected,
+                        SUM(discount_amount) as discounts_given,
+                        AVG(total_amount) as avg_sale_amount
+                    FROM sales 
+                    GROUP BY strftime('%Y-W%W', created_at)
+                    ORDER BY period DESC
+                    LIMIT 50
+                `);
+            } else if (period === 'monthly') {
+                salesData = await db.query(`
+                    SELECT 
+                        strftime('%Y-%m', created_at) as period,
+                        COUNT(*) as sales_count,
+                        SUM(total_amount) as revenue,
+                        SUM(tax_amount) as tax_collected,
+                        SUM(discount_amount) as discounts_given,
+                        AVG(total_amount) as avg_sale_amount
+                    FROM sales 
+                    GROUP BY strftime('%Y-%m', created_at)
+                    ORDER BY period DESC
+                    LIMIT 50
+                `);
+            } else if (period === 'yearly') {
+                salesData = await db.query(`
+                    SELECT 
+                        strftime('%Y', created_at) as period,
+                        COUNT(*) as sales_count,
+                        SUM(total_amount) as revenue,
+                        SUM(tax_amount) as tax_collected,
+                        SUM(discount_amount) as discounts_given,
+                        AVG(total_amount) as avg_sale_amount
+                    FROM sales 
+                    GROUP BY strftime('%Y', created_at)
+                    ORDER BY period DESC
+                    LIMIT 50
+                `);
+            }
+        } catch (queryError) {
+            console.error('Sales data query error:', queryError);
+            salesData = [];
+        }
+
+        console.log(`Sales data:`, salesData);
+
+        // Get simple product performance
+        let productPerformance = [];
+        try {
+            // First try to get from sale_items if they exist
+            const saleItemsCount = await db.query('SELECT COUNT(*) as count FROM sale_items');
+            if (saleItemsCount[0].count > 0) {
+                productPerformance = await db.query(`
+                    SELECT 
+                        p.name,
+                        p.sku,
+                        p.brand,
+                        SUM(si.quantity) as units_sold,
+                        SUM(si.total_price) as revenue
+                    FROM sale_items si
+                    JOIN products p ON si.product_id = p.id
+                    GROUP BY p.id, p.name, p.sku, p.brand
+                    ORDER BY units_sold DESC
+                    LIMIT 10
+                `);
+            } else {
+                // Fallback: get top products by stock (most popular items)
+                productPerformance = await db.query(`
+                    SELECT 
+                        name,
+                        sku,
+                        brand,
+                        stock as units_sold,
+                        (price * stock) as revenue
+                    FROM products 
+                    WHERE stock > 0
+                    ORDER BY stock DESC
+                    LIMIT 10
+                `);
+            }
+        } catch (queryError) {
+            console.error('Product performance query error:', queryError);
+            productPerformance = [];
+        }
+
+        console.log(`Product performance:`, productPerformance);
+
+        // Get payment method breakdown
+        let paymentBreakdown = [];
+        try {
+            paymentBreakdown = await db.query(`
+                SELECT 
+                    payment_method,
+                    COUNT(*) as transaction_count,
+                    SUM(total_amount) as total_amount
+                FROM sales 
+                GROUP BY payment_method
+                ORDER BY total_amount DESC
+            `);
+        } catch (queryError) {
+            console.error('Payment breakdown query error:', queryError);
+            paymentBreakdown = [];
+        }
+
+        console.log(`Payment breakdown:`, paymentBreakdown);
+
+        const response = {
+            period,
+            sales_data: salesData,
+            product_performance: productPerformance,
+            payment_breakdown: paymentBreakdown,
+            generated_at: new Date().toISOString()
+        };
+
+        console.log(`Sending response:`, response);
+        res.json(response);
+    } catch (error) {
+        console.error('Get sales report error:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    } finally {
+        // Close database connection
+        if (db) {
+            try {
+                await db.close();
+            } catch (closeError) {
+                console.error('Error closing database:', closeError);
+            }
+        }
+    }
+});
+
+// Test endpoint to verify database connection
+router.get('/test', authenticateToken, requireAdmin, async (req, res) => {
+    let db;
+    try {
+        db = new Database();
+        const result = await db.query('SELECT COUNT(*) as count FROM sales');
+        res.json({ 
+            success: true, 
+            sales_count: result[0].count,
+            message: 'Database connection working' 
+        });
+    } catch (error) {
+        console.error('Test endpoint error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    } finally {
+        if (db) {
+            try {
+                await db.close();
+            } catch (closeError) {
+                console.error('Error closing database:', closeError);
+            }
+        }
     }
 });
 

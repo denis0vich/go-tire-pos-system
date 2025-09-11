@@ -26,9 +26,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from frontend build (for production)
-app.use(express.static(path.join(__dirname, '../frontend/build')));
-
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
@@ -82,10 +79,16 @@ app.get('/api/system/info', authenticateToken, async (req, res) => {
     }
 });
 
-// Catch all handler for React app (for production)
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
-});
+// Only serve static files and catch-all in production
+if (process.env.NODE_ENV === 'production') {
+    // Serve static files from frontend build (for production)
+    app.use(express.static(path.join(__dirname, '../frontend/build')));
+    
+    // Catch all handler for React app (for production)
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
+    });
+}
 
 // Error handling middleware
 app.use((error, req, res, next) => {

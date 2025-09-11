@@ -14,15 +14,11 @@ import {
   Edit,
   Trash2,
   DollarSign,
-  ShoppingCart,
-  TrendingUp,
-  Calendar,
   AlertTriangle,
-  Eye,
   Save,
   X
 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
@@ -38,6 +34,7 @@ const AdminDashboard = () => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [productForm, setProductForm] = useState({
     name: '',
+    sku: '',
     barcode: '',
     price: '',
     cost: '',
@@ -74,6 +71,7 @@ const AdminDashboard = () => {
   
   // Backup data
   const [backups, setBackups] = useState([]);
+  
 
   useEffect(() => {
     if (activeTab === 'dashboard') {
@@ -91,6 +89,13 @@ const AdminDashboard = () => {
       fetchBackups();
     }
   }, [activeTab]);
+
+  // Refresh report data when period changes
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      fetchReportData();
+    }
+  }, [reportPeriod]);
 
   const fetchDashboardData = async () => {
     try {
@@ -149,14 +154,31 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchReportData = async () => {
+  const handleCreateBackup = async () => {
     try {
-      const response = await axios.get(`/api/sales/reports/${reportPeriod}`);
-      setReportData(response.data || {});
+      setLoading(true);
+      const response = await axios.post('/api/backup/create');
+      toast.success('Backup created successfully');
+      fetchBackups(); // Refresh the backup list
     } catch (error) {
-      toast.error('Failed to load report data');
+      toast.error('Failed to create backup');
+    } finally {
+      setLoading(false);
     }
   };
+
+  const fetchReportData = async () => {
+    try {
+      console.log(`Fetching report data for period: ${reportPeriod}`);
+      const response = await axios.get(`/api/sales/reports/${reportPeriod}`);
+      console.log('Report data response:', response.data);
+      setReportData(response.data || {});
+    } catch (error) {
+      console.error('Report data fetch error:', error);
+      toast.error(`Failed to load report data: ${error.response?.data?.error || error.message}`);
+    }
+  };
+
 
   // User Management Functions
   const openUserModal = (user = null) => {
@@ -237,6 +259,7 @@ const AdminDashboard = () => {
       setEditingProduct(product);
       setProductForm({
         name: product.name || '',
+        sku: product.sku || '',
         barcode: product.barcode || '',
         price: product.price || '',
         cost: product.cost || '',
@@ -251,6 +274,7 @@ const AdminDashboard = () => {
       setEditingProduct(null);
       setProductForm({
         name: '',
+        sku: '',
         barcode: '',
         price: '',
         cost: '',
@@ -320,7 +344,7 @@ const AdminDashboard = () => {
       
       const dayTotal = salesHistory
         .filter(sale => sale.created_at?.startsWith(dateStr))
-        .reduce((sum, sale) => sum + parseFloat(sale.total || 0), 0);
+        .reduce((sum, sale) => sum + parseFloat(sale.total_amount || sale.total || 0), 0);
       
       last7Days.push({
         date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
@@ -356,59 +380,443 @@ const AdminDashboard = () => {
 
   const analytics = getAnalyticsData();
 
+  // User Modal Component
+  const UserModal = () => (
+    showUserModal && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+          <div className="flex items-center justify-between p-6 border-b">
+            <h3 className="text-lg font-semibold text-gray-900">
+              {editingUser ? 'Edit User' : 'Add New User'}
+            </h3>
+            <button
+              onClick={() => setShowUserModal(false)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <form onSubmit={handleUserSubmit} className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Username *
+              </label>
+              <input
+                type="text"
+                required
+                disabled={editingUser}
+                value={userForm.username}
+                onChange={(e) => setUserForm({...userForm, username: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Password {editingUser ? '(leave blank to keep current)' : '*'}
+              </label>
+              <input
+                type="password"
+                required={!editingUser}
+                value={userForm.password}
+                onChange={(e) => setUserForm({...userForm, password: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Role *
+              </label>
+              <select
+                required
+                value={userForm.role}
+                onChange={(e) => setUserForm({...userForm, role: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="cashier">Cashier</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowUserModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                {loading ? 'Saving...' : (editingUser ? 'Update User' : 'Create User')}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )
+  );
+
+  const renderUsers = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
+        <button
+          onClick={() => openUserModal()}
+          className="btn btn-primary flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          Add User
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {users.map(user => (
+                <tr key={user.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {user.username}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {user.role}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {new Date(user.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => openUserModal(user)}
+                        className="text-blue-600 hover:text-blue-900"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteUser(user.id)}
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderReports = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-900">Sales Reports</h2>
+        <div className="flex items-center gap-4">
+          <select
+            value={reportPeriod}
+            onChange={(e) => {
+              setReportPeriod(e.target.value);
+              fetchReportData(); // Refresh data when period changes
+            }}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+          </select>
+          <button
+            onClick={() => exportToCSV(salesHistory, `sales-report-${reportPeriod}`)}
+            className="btn btn-outline flex items-center gap-2"
+          >
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue Trend ({reportPeriod})</h3>
+          {reportData.sales_data && reportData.sales_data.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart data={reportData.sales_data}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="period" />
+                <YAxis />
+                <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'Revenue']} />
+                <Area type="monotone" dataKey="revenue" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-64 text-gray-500">
+              <p>No sales data available for {reportPeriod} reports</p>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Performance</h3>
+          {reportData.product_performance && reportData.product_performance.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={reportData.product_performance}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="units_sold"
+                  label={({name, value}) => `${name}: ${value}`}
+                >
+                  {reportData.product_performance.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'][index % 5]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-64 text-gray-500">
+              <p>No product performance data available</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Sales Summary</h3>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {salesHistory.slice(0, 10).map(sale => (
+                <tr key={sale.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {new Date(sale.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    ${parseFloat(sale.total_amount || sale.total || 0).toFixed(2)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {sale.items_count || sale.items?.length || 0} items
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">
+                    {sale.payment_method}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderSettings = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Store Settings</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Store Name
+            </label>
+            <input
+              type="text"
+              value={settings.store_name || 'Premium Tire Center'}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Store Address
+            </label>
+            <input
+              type="text"
+              value={settings.store_address || '123 Auto Way, Tire City, TC 12345'}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Phone Number
+            </label>
+            <input
+              type="text"
+              value={settings.phone || '(555) TIRE-123'}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Tax Rate (%)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={settings.tax_rate || 10}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+        </div>
+        <div className="mt-6">
+          <button className="btn btn-primary">
+            Save Settings
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderBackup = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-900">Backup Management</h2>
+        <button 
+          onClick={handleCreateBackup}
+          disabled={loading}
+          className="btn btn-primary"
+        >
+          {loading ? 'Creating...' : 'Create Backup'}
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Available Backups</h3>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Backup Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date Created</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {backups.length > 0 ? (
+                backups.map((backup, index) => (
+                  <tr key={index}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {backup.filename || `Backup ${index + 1}`}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {backup.created_at ? new Date(backup.created_at).toLocaleString() : 'Unknown'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {backup.size ? `${(backup.size / 1024).toFixed(1)} KB` : 'Unknown'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <div className="flex items-center space-x-2">
+                        <button className="text-blue-600 hover:text-blue-900">
+                          Download
+                        </button>
+                        <button className="text-red-600 hover:text-red-900">
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
+                    No backups available
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderDashboard = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">🏁 Tire Store Dashboard</h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">🏁 Auto Parts Dashboard - MODERN VERSION</h2>
         
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-xl p-6 text-white transform hover:scale-105 transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Tires</p>
-                <p className="text-3xl font-bold text-gray-900">{products.length}</p>
+                <p className="text-blue-100 text-sm font-medium">Total Products</p>
+                <p className="text-4xl font-bold">{products.length}</p>
               </div>
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Package className="w-6 h-6 text-blue-600" />
+              <div className="p-4 bg-white bg-opacity-20 rounded-xl backdrop-blur-sm">
+                <Package className="w-8 h-8" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-2xl shadow-xl p-6 text-white transform hover:scale-105 transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Low Stock Tires</p>
-                <p className="text-3xl font-bold text-red-600">{analytics.lowStockProducts.length}</p>
+                <p className="text-red-100 text-sm font-medium">Low Stock Items</p>
+                <p className="text-4xl font-bold">{analytics.lowStockProducts.length}</p>
               </div>
-              <div className="p-3 bg-red-100 rounded-lg">
-                <AlertTriangle className="w-6 h-6 text-red-600" />
+              <div className="p-4 bg-white bg-opacity-20 rounded-xl backdrop-blur-sm">
+                <AlertTriangle className="w-8 h-8" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl shadow-xl p-6 text-white transform hover:scale-105 transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Sales (7d)</p>
-                <p className="text-3xl font-bold text-green-600">
+                <p className="text-green-100 text-sm font-medium">Total Sales (7d)</p>
+                <p className="text-4xl font-bold">
                   ${analytics.dailySales.reduce((sum, day) => sum + day.sales, 0).toFixed(2)}
                 </p>
               </div>
-              <div className="p-3 bg-green-100 rounded-lg">
-                <DollarSign className="w-6 h-6 text-green-600" />
+              <div className="p-4 bg-white bg-opacity-20 rounded-xl backdrop-blur-sm">
+                <DollarSign className="w-8 h-8" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl shadow-xl p-6 text-white transform hover:scale-105 transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Users</p>
-                <p className="text-3xl font-bold text-purple-600">{users.length}</p>
+                <p className="text-purple-100 text-sm font-medium">Total Users</p>
+                <p className="text-4xl font-bold">{users.length}</p>
               </div>
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <Users className="w-6 h-6 text-purple-600" />
+              <div className="p-4 bg-white bg-opacity-20 rounded-xl backdrop-blur-sm">
+                <Users className="w-8 h-8" />
               </div>
             </div>
           </div>
@@ -417,29 +825,60 @@ const AdminDashboard = () => {
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Sales Trend Chart */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Sales Trend (Last 7 Days)</h3>
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+            <div className="flex items-center mb-6">
+              <div className="p-3 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl mr-4">
+                <BarChart3 className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">Sales Trend (Last 7 Days)</h3>
+            </div>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={analytics.dailySales}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'Sales']} />
-                <Line type="monotone" dataKey="sales" stroke="#3b82f6" strokeWidth={2} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="date" stroke="#64748b" />
+                <YAxis stroke="#64748b" />
+                <Tooltip 
+                  formatter={(value) => [`$${value.toFixed(2)}`, 'Sales']}
+                  contentStyle={{
+                    backgroundColor: 'white',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '12px',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+                  }}
+                />
+                <Line type="monotone" dataKey="sales" stroke="#3b82f6" strokeWidth={3} dot={{ fill: '#3b82f6', strokeWidth: 2, r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
 
           {/* Top Products Chart */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Selling Tires</h3>
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+            <div className="flex items-center mb-6">
+              <div className="p-3 bg-gradient-to-r from-green-500 to-green-600 rounded-xl mr-4">
+                <Package className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">Top Selling Products</h3>
+            </div>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={analytics.topProducts}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="quantity" fill="#10b981" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="name" stroke="#64748b" />
+                <YAxis stroke="#64748b" />
+                <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'white',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '12px',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+                  }}
+                />
+                <Bar dataKey="quantity" fill="url(#colorGradient)" radius={[8, 8, 0, 0]} />
+                <defs>
+                  <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#059669" stopOpacity={0.8}/>
+                  </linearGradient>
+                </defs>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -447,17 +886,19 @@ const AdminDashboard = () => {
 
         {/* Low Stock Alert */}
         {analytics.lowStockProducts.length > 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-6">
-            <div className="flex items-center mb-4">
-              <AlertTriangle className="w-5 h-5 text-red-600 mr-2" />
-              <h3 className="text-lg font-semibold text-red-800">Low Tire Stock Alert</h3>
+          <div className="bg-gradient-to-r from-red-50 to-red-100 border-2 border-red-200 rounded-2xl p-8 shadow-lg">
+            <div className="flex items-center mb-6">
+              <div className="p-3 bg-gradient-to-r from-red-500 to-red-600 rounded-xl mr-4">
+                <AlertTriangle className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-red-800">Low Stock Alert</h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {analytics.lowStockProducts.map(product => (
-                <div key={product.id} className="bg-white rounded-lg p-4 border border-red-200">
-                  <h4 className="font-medium text-gray-900">{product.name}</h4>
-                  <p className="text-sm text-gray-600">Stock: {product.stock}</p>
-                  <p className="text-sm text-red-600">Min Stock: {product.min_stock || 5}</p>
+                <div key={product.id} className="bg-white rounded-xl p-6 border border-red-200 shadow-md hover:shadow-lg transition-all duration-200">
+                  <h4 className="font-bold text-gray-900 mb-2">{product.name}</h4>
+                  <p className="text-sm text-red-600 font-medium">Stock: {product.stock}</p>
+                  <p className="text-xs text-gray-500 mt-1">Min Required: {product.min_stock || 5}</p>
                 </div>
               ))}
             </div>
@@ -470,52 +911,66 @@ const AdminDashboard = () => {
   const renderProducts = () => (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Tire Inventory Management</h2>
+        <div className="flex items-center">
+          <div className="p-3 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl mr-4">
+            <Package className="w-6 h-6 text-white" />
+          </div>
+          <h2 className="text-3xl font-bold text-gray-900">Product Inventory Management</h2>
+        </div>
         <button
           onClick={() => openProductModal()}
-          className="btn btn-primary flex items-center gap-2"
+          className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-6 py-3 rounded-xl font-semibold flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
         >
-          <Plus className="w-4 h-4" />
-          Add Tire
+          <Plus className="w-5 h-5" />
+          Add Product
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tire</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Product</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">SKU</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Brand</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Size/Type</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Price</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Cost</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Stock</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Min Stock</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white divide-y divide-gray-100">
               {products.map(product => (
-                <tr key={product.id} className={product.stock <= (product.min_stock || 5) ? 'bg-red-50' : ''}>
+                <tr key={product.id} className={`hover:bg-gray-50 transition-colors duration-200 ${product.stock <= (product.min_stock || 5) ? 'bg-red-50 border-l-4 border-red-400' : ''}`}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
-                      <div className="text-sm font-medium text-gray-900">{product.name}</div>
+                      <div className="text-sm font-semibold text-gray-900">{product.name}</div>
                       {product.description && (
-                        <div className="text-sm text-gray-500">{product.description}</div>
+                        <div className="text-xs text-gray-500 mt-1">{product.description}</div>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {product.sku || 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {product.brand || 'N/A'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.tire_size || 'N/A'}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {product.tire_size || product.category || 'N/A'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600">
                     ${parseFloat(product.price).toFixed(2)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-600">
+                    {product.cost ? `$${parseFloat(product.cost).toFixed(2)}` : 'N/A'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <span className={`text-sm font-medium ${
+                      <span className={`text-sm font-bold ${
                         product.stock <= (product.min_stock || 5) ? 'text-red-600' : 'text-gray-900'
                       }`}>
                         {product.stock}
@@ -525,17 +980,20 @@ const AdminDashboard = () => {
                       )}
                     </div>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-600">
+                    {product.min_stock || 5}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-3">
                       <button
                         onClick={() => openProductModal(product)}
-                        className="text-blue-600 hover:text-blue-900"
+                        className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200"
                       >
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDeleteProduct(product.id)}
-                        className="text-red-600 hover:text-red-900"
+                        className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -557,7 +1015,7 @@ const AdminDashboard = () => {
         <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between p-6 border-b">
             <h3 className="text-lg font-semibold text-gray-900">
-              {editingProduct ? 'Edit Tire' : 'Add New Tire'}
+              {editingProduct ? 'Edit Product' : 'Add New Product'}
             </h3>
             <button
               onClick={() => setShowProductModal(false)}
@@ -571,13 +1029,27 @@ const AdminDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tire Name *
+                  Product Name *
                 </label>
                 <input
                   type="text"
                   required
                   value={productForm.name}
                   onChange={(e) => setProductForm({...productForm, name: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  SKU *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={productForm.sku}
+                  onChange={(e) => setProductForm({...productForm, sku: e.target.value})}
+                  placeholder="e.g., MIC-DEF-225-65-17"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -663,11 +1135,12 @@ const AdminDashboard = () => {
                   <option value="Winter Tires">Winter Tires</option>
                   <option value="All-Season Tires">All-Season Tires</option>
                   <option value="Motorcycle Tires">Motorcycle Tires</option>
-                  <option value="Tire Accessories">Tire Accessories</option>
-                  <option value="Wheels">Wheels</option>
-                  <option value="Brake Pads">Brake Pads</option>
                   <option value="Oil & Fluids">Oil & Fluids</option>
                   <option value="Auto Parts">Auto Parts</option>
+                  <option value="Brake Pads">Brake Pads</option>
+                  <option value="Tire Accessories">Tire Accessories</option>
+                  <option value="Wheels">Wheels</option>
+                  <option value="Car Care">Car Care</option>
                 </select>
               </div>
 
@@ -697,19 +1170,42 @@ const AdminDashboard = () => {
                   <option value="Cooper">Cooper</option>
                   <option value="BFGoodrich">BFGoodrich</option>
                   <option value="Firestone">Firestone</option>
+                  <option value="Mobil 1">Mobil 1</option>
+                  <option value="Castrol">Castrol</option>
+                  <option value="Pennzoil">Pennzoil</option>
+                  <option value="Valvoline">Valvoline</option>
+                  <option value="Fram">Fram</option>
+                  <option value="Bosch">Bosch</option>
+                  <option value="WIX">WIX</option>
+                  <option value="K&N">K&N</option>
+                  <option value="Raybestos">Raybestos</option>
+                  <option value="Wagner">Wagner</option>
+                  <option value="Akebono">Akebono</option>
+                  <option value="Power Stop">Power Stop</option>
+                  <option value="Meguiars">Meguiars</option>
+                  <option value="Chemical Guys">Chemical Guys</option>
+                  <option value="Armor All">Armor All</option>
+                  <option value="Rain-X">Rain-X</option>
+                  <option value="Prestone">Prestone</option>
+                  <option value="Zerex">Zerex</option>
+                  <option value="Peak">Peak</option>
+                  <option value="American Racing">American Racing</option>
+                  <option value="Fuel">Fuel</option>
+                  <option value="Method">Method</option>
+                  <option value="Generic">Generic</option>
                   <option value="Other">Other</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tire Size (e.g., 225/65R17)
+                  Size/Type (e.g., 225/65R17, 5W-30, 17x8)
                 </label>
                 <input
                   type="text"
                   value={productForm.tire_size}
                   onChange={(e) => setProductForm({...productForm, tire_size: e.target.value})}
-                  placeholder="225/65R17"
+                  placeholder="225/65R17, 5W-30, 17x8, etc."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -741,7 +1237,7 @@ const AdminDashboard = () => {
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
               >
                 <Save className="w-4 h-4" />
-                {loading ? 'Saving...' : (editingProduct ? 'Update Tire' : 'Create Tire')}
+                {loading ? 'Saving...' : (editingProduct ? 'Update Product' : 'Create Product')}
               </button>
             </div>
           </form>
@@ -752,7 +1248,7 @@ const AdminDashboard = () => {
 
   const sidebarItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'products', label: 'Tires', icon: Package },
+    { id: 'products', label: 'Products', icon: Package },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings },
@@ -760,40 +1256,42 @@ const AdminDashboard = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
       {/* Sidebar */}
-      <div className="w-64 bg-white shadow-sm border-r">
-        <div className="p-6">
-          <h1 className="text-xl font-bold text-gray-900">🏁 Tire Store Admin</h1>
-          <p className="text-sm text-gray-500">Welcome, {user?.username}</p>
+      <div className="w-72 bg-gradient-to-b from-gray-900 to-gray-800 shadow-2xl border-r border-gray-700">
+        <div className="p-8">
+          <div className="bg-gradient-to-r from-red-600 to-red-700 rounded-2xl p-6 text-white">
+            <h1 className="text-2xl font-bold mb-2">🏁 Auto Parts Admin</h1>
+            <p className="text-red-100 text-sm">Welcome back, {user?.username}</p>
+          </div>
         </div>
         
-        <nav className="mt-6">
+        <nav className="px-6">
           {sidebarItems.map(item => {
             const Icon = item.icon;
             return (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center px-6 py-3 text-left text-sm font-medium transition-colors ${
+                className={`w-full flex items-center px-6 py-4 text-left text-sm font-medium transition-all duration-200 rounded-xl mb-2 ${
                   activeTab === item.id
-                    ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-lg transform scale-105'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white hover:transform hover:scale-105'
                 }`}
               >
-                <Icon className="w-5 h-5 mr-3" />
+                <Icon className="w-6 h-6 mr-4" />
                 {item.label}
               </button>
             );
           })}
         </nav>
 
-        <div className="absolute bottom-0 w-64 p-6 border-t">
+        <div className="absolute bottom-0 w-72 p-6 border-t border-gray-700">
           <button
             onClick={logout}
-            className="w-full flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
+            className="w-full flex items-center px-6 py-4 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-xl transition-all duration-200"
           >
-            <LogOut className="w-5 h-5 mr-3" />
+            <LogOut className="w-6 h-6 mr-4" />
             Logout
           </button>
         </div>
@@ -806,8 +1304,8 @@ const AdminDashboard = () => {
           {activeTab === 'products' && renderProducts()}
           {activeTab === 'users' && renderUsers()}
           {activeTab === 'reports' && renderReports()}
-          {activeTab === 'settings' && <div>Settings coming soon...</div>}
-          {activeTab === 'backup' && <div>Backup management coming soon...</div>}
+          {activeTab === 'settings' && renderSettings()}
+          {activeTab === 'backup' && renderBackup()}
         </div>
       </div>
 
@@ -815,249 +1313,6 @@ const AdminDashboard = () => {
       <ProductModal />
       <UserModal />
     </div>
-  );
-
-  const renderUsers = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
-        <button
-          onClick={() => openUserModal()}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Add User
-        </button>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {users.map(user => (
-                <tr key={user.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {user.username}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(user.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => openUserModal(user)}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteUser(user.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderReports = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Sales Reports</h2>
-        <div className="flex items-center gap-4">
-          <select
-            value={reportPeriod}
-            onChange={(e) => setReportPeriod(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="monthly">Monthly</option>
-            <option value="quarterly">Quarterly</option>
-            <option value="yearly">Yearly</option>
-          </select>
-          <button
-            onClick={() => exportToCSV(salesHistory, `sales-report-${reportPeriod}`)}
-            className="btn btn-outline flex items-center gap-2"
-          >
-            Export CSV
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue Trend</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={analytics.dailySales}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'Revenue']} />
-              <Area type="monotone" dataKey="sales" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Tire Performance</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={analytics.topProducts}
-                cx="50%"
-                cy="50%"
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="quantity"
-                label={({name, value}) => `${name}: ${value}`}
-              >
-                {analytics.topProducts.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'][index % 5]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Sales Summary</h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {salesHistory.slice(0, 10).map(sale => (
-                <tr key={sale.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {new Date(sale.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    ${parseFloat(sale.total).toFixed(2)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {sale.items?.length || 0} items
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">
-                    {sale.payment_method}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-
-  const UserModal = () => (
-    showUserModal && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-          <div className="flex items-center justify-between p-6 border-b">
-            <h3 className="text-lg font-semibold text-gray-900">
-              {editingUser ? 'Edit User' : 'Add New User'}
-            </h3>
-            <button
-              onClick={() => setShowUserModal(false)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-6 h-6" />
-            </button>
-          </div>
-
-          <form onSubmit={handleUserSubmit} className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Username *
-              </label>
-              <input
-                type="text"
-                required
-                disabled={editingUser}
-                value={userForm.username}
-                onChange={(e) => setUserForm({...userForm, username: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Password {editingUser ? '(leave blank to keep current)' : '*'}
-              </label>
-              <input
-                type="password"
-                required={!editingUser}
-                value={userForm.password}
-                onChange={(e) => setUserForm({...userForm, password: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Role *
-              </label>
-              <select
-                required
-                value={userForm.role}
-                onChange={(e) => setUserForm({...userForm, role: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="cashier">Cashier</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-
-            <div className="flex justify-end space-x-3 pt-4">
-              <button
-                type="button"
-                onClick={() => setShowUserModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-              >
-                <Save className="w-4 h-4" />
-                {loading ? 'Saving...' : (editingUser ? 'Update User' : 'Create User')}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )
   );
 };
 

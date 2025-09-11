@@ -13,7 +13,7 @@ import {
   Receipt,
   LogOut,
   History,
-  Search
+  Search,
 } from 'lucide-react';
 
 const CashierDashboard = () => {
@@ -231,6 +231,7 @@ const CashierDashboard = () => {
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.barcode?.includes(searchTerm) ||
     product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -246,17 +247,10 @@ const CashierDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">🏁 Tire Store POS</h1>
+              <h1 className="text-2xl font-bold text-gray-900">🏁 Auto Parts Store POS</h1>
               <p className="text-sm text-gray-500">Welcome, {user?.username}</p>
             </div>
             <div className="flex items-center space-x-4">
-              <button
-                onClick={() => setShowChangePassword(true)}
-                className="btn btn-outline"
-              >
-                <Key className="w-4 h-4" />
-                Change Password
-              </button>
               <button onClick={logout} className="btn btn-secondary">
                 <LogOut className="w-4 h-4" />
                 Logout
@@ -272,8 +266,8 @@ const CashierDashboard = () => {
           {/* Primary Barcode Scanner */}
           <div className="pos-scanner-card">
             <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold mb-2">🔍 Tire & Auto Parts Scanner</h2>
-              <p className="text-lg opacity-90">Scan tire barcode or search manually</p>
+              <h2 className="text-2xl font-bold mb-2">🔍 Product Scanner</h2>
+              <p className="text-lg opacity-90">Scan product barcode or search manually</p>
             </div>
             
             <form onSubmit={handleBarcodeSubmit} className="space-y-6">
@@ -284,7 +278,7 @@ const CashierDashboard = () => {
                   type="text"
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="Scan tire barcode or enter manually..."
+                  placeholder="Scan product barcode or enter manually..."
                   className="pos-scanner-input"
                 />
               </div>
@@ -345,7 +339,7 @@ const CashierDashboard = () => {
               className="pos-action-btn"
             >
               <Search className="w-8 h-8 text-blue-500" />
-              <span className="font-semibold text-gray-700">Search Tires</span>
+              <span className="font-semibold text-gray-700">Search Products</span>
             </button>
             
             <button
@@ -388,12 +382,12 @@ const CashierDashboard = () => {
             </h4>
             <div className="grid grid-cols-2 gap-4 text-sm text-gray-700">
               <div>
-                <p className="font-medium mb-1">🔍 Tire Scanning:</p>
+                <p className="font-medium mb-1">🔍 Product Scanning:</p>
                 <p>Use barcode scanner or type manually</p>
               </div>
               <div>
-                <p className="font-medium mb-1">🔍 Tire Search:</p>
-                <p>Find tires when barcode fails</p>
+                <p className="font-medium mb-1">🔍 Product Search:</p>
+                <p>Find products when barcode fails</p>
               </div>
               <div>
                 <p className="font-medium mb-1">🔓 Admin Override:</p>
@@ -412,7 +406,7 @@ const CashierDashboard = () => {
           <div className="cart-header">
             <h3 className="cart-title">
               <ShoppingCart className="w-6 h-6" />
-              Tire Cart ({cart.length})
+              Shopping Cart ({cart.length})
             </h3>
           </div>
 
@@ -420,8 +414,8 @@ const CashierDashboard = () => {
             {cart.length === 0 ? (
               <div className="text-center py-12">
                 <ShoppingCart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500 text-lg">Tire cart is empty</p>
-                <p className="text-gray-400 text-sm">Scan tires to get started</p>
+                <p className="text-gray-500 text-lg">Shopping cart is empty</p>
+                <p className="text-gray-400 text-sm">Scan products to get started</p>
               </div>
             ) : (
               cart.map(item => (
@@ -610,9 +604,9 @@ const CashierDashboard = () => {
 
             <div className="receipt">
               <div className="receipt-header">
-                <h3>🏁 Premium Tire Center</h3>
-                <p>123 Auto Way, Tire City, TC 12345</p>
-                <p>Tel: (555) TIRE-123</p>
+                <h3>🏁 Premium Auto Parts Center</h3>
+                <p>123 Auto Way, Auto City, AC 12345</p>
+                <p>Tel: (555) AUTO-123</p>
                 <hr />
                 <p>Sale ID: {lastSale.sale.id}</p>
                 <p>Date: {new Date(lastSale.sale.created_at).toLocaleString()}</p>
@@ -624,9 +618,9 @@ const CashierDashboard = () => {
                   <div key={item.id} className="receipt-item">
                     <div>
                       <div>{item.product_name}</div>
-                      <div>{item.quantity} x ${item.unit_price}</div>
+                      <div>{item.quantity} x ${parseFloat(item.unit_price).toFixed(2)}</div>
                     </div>
-                    <div>${item.total_price}</div>
+                    <div>${parseFloat(item.total_price).toFixed(2)}</div>
                   </div>
                 ))}
               </div>
@@ -634,28 +628,28 @@ const CashierDashboard = () => {
               <div className="receipt-total">
                 <div className="receipt-item">
                   <span>Subtotal:</span>
-                  <span>${lastSale.receipt_data.subtotal}</span>
+                  <span>${parseFloat(lastSale.receipt_data.subtotal).toFixed(2)}</span>
                 </div>
                 <div className="receipt-item">
                   <span>Tax:</span>
-                  <span>${lastSale.receipt_data.tax_amount}</span>
+                  <span>${parseFloat(lastSale.receipt_data.tax_amount).toFixed(2)}</span>
                 </div>
                 <div className="receipt-item">
                   <span><strong>Total:</strong></span>
-                  <span><strong>${lastSale.receipt_data.total_amount}</strong></span>
+                  <span><strong>${parseFloat(lastSale.receipt_data.total_amount).toFixed(2)}</strong></span>
                 </div>
                 <div className="receipt-item">
                   <span>Payment ({lastSale.sale.payment_method}):</span>
-                  <span>${lastSale.receipt_data.payment_received}</span>
+                  <span>${parseFloat(lastSale.receipt_data.payment_received || lastSale.receipt_data.total_amount).toFixed(2)}</span>
                 </div>
                 <div className="receipt-item">
                   <span>Change:</span>
-                  <span>${lastSale.receipt_data.change_given}</span>
+                  <span>${parseFloat(lastSale.receipt_data.change_given || 0).toFixed(2)}</span>
                 </div>
               </div>
 
               <div className="text-center mt-4">
-                <p>Thank you for choosing Premium Tire Center!</p>
+                <p>Thank you for choosing Premium Auto Parts Center!</p>
                 <p>Drive safely! 🚗</p>
               </div>
             </div>
@@ -684,7 +678,7 @@ const CashierDashboard = () => {
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '600px' }}>
             <div className="modal-header">
-              <h3 className="modal-title">Search Tires & Auto Parts</h3>
+              <h3 className="modal-title">Search Products</h3>
               <button
                 onClick={() => setShowProductSearch(false)}
                 className="modal-close"
@@ -700,7 +694,7 @@ const CashierDashboard = () => {
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by tire brand, size, or barcode..."
+                  placeholder="Search by product name, brand, or barcode..."
                   className="form-input pl-10"
                   autoFocus
                 />
@@ -709,7 +703,7 @@ const CashierDashboard = () => {
 
             <div className="max-h-96 overflow-y-auto">
               {filteredProducts.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">No tires found</p>
+                <p className="text-center text-gray-500 py-8">No products found</p>
               ) : (
                 <div className="space-y-2">
                   {filteredProducts.map(product => (
@@ -730,7 +724,7 @@ const CashierDashboard = () => {
                         <div>
                           <h4 className="font-medium">{product.name}</h4>
                           <p className="text-sm text-gray-500">
-                            {product.brand} • {product.tire_size} • {product.category}
+                            {product.brand} • {product.sku || product.tire_size} • {product.category}
                           </p>
                         </div>
                         <div className="text-right">

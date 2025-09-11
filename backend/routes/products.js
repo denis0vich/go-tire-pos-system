@@ -15,9 +15,9 @@ router.get('/', authenticateToken, requireCashier, async (req, res) => {
         let params = [];
 
         if (search) {
-            sql += ' AND (name LIKE ? OR barcode LIKE ? OR category LIKE ?)';
+            sql += ' AND (name LIKE ? OR sku LIKE ? OR barcode LIKE ? OR category LIKE ? OR brand LIKE ?)';
             const searchTerm = `%${search}%`;
-            params.push(searchTerm, searchTerm, searchTerm);
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         }
 
         sql += ' ORDER BY name LIMIT ? OFFSET ?';
@@ -29,9 +29,9 @@ router.get('/', authenticateToken, requireCashier, async (req, res) => {
         let countSql = 'SELECT COUNT(*) as total FROM products WHERE 1=1';
         let countParams = [];
         if (search) {
-            countSql += ' AND (name LIKE ? OR barcode LIKE ? OR category LIKE ?)';
+            countSql += ' AND (name LIKE ? OR sku LIKE ? OR barcode LIKE ? OR category LIKE ? OR brand LIKE ?)';
             const searchTerm = `%${search}%`;
-            countParams.push(searchTerm, searchTerm, searchTerm);
+            countParams.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         }
 
         const countResult = await db.get(countSql, countParams);
@@ -93,10 +93,10 @@ router.get('/:id', authenticateToken, requireCashier, async (req, res) => {
 // Create new product (admin only)
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { name, barcode, price, stock = 0, category, description } = req.body;
+        const { name, sku, barcode, price, cost, stock = 0, category, description, min_stock = 5, brand, tire_size } = req.body;
 
-        if (!name || !price) {
-            return res.status(400).json({ error: 'Name and price are required' });
+        if (!name || !price || !sku) {
+            return res.status(400).json({ error: 'Name, price, and SKU are required' });
         }
 
         if (price < 0) {
@@ -107,7 +107,23 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
             return res.status(400).json({ error: 'Stock cannot be negative' });
         }
 
+        if (cost !== undefined && cost < 0) {
+            return res.status(400).json({ error: 'Cost cannot be negative' });
+        }
+
+        if (min_stock < 0) {
+            return res.status(400).json({ error: 'Minimum stock cannot be negative' });
+        }
+
         const db = new Database();
+
+        // Check if SKU already exists
+        if (sku) {
+            const existingProduct = await db.get('SELECT id FROM products WHERE sku = ?', [sku]);
+            if (existingProduct) {
+                return res.status(400).json({ error: 'SKU already exists' });
+            }
+        }
 
         // Check if barcode already exists
         if (barcode) {
@@ -118,8 +134,8 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
         }
 
         const result = await db.run(
-            'INSERT INTO products (name, barcode, price, stock, category, description) VALUES (?, ?, ?, ?, ?, ?)',
-            [name, barcode, parseFloat(price), parseInt(stock), category, description]
+            'INSERT INTO products (name, sku, barcode, price, cost, stock, category, description, min_stock, brand, tire_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [name, sku, barcode, parseFloat(price), cost ? parseFloat(cost) : null, parseInt(stock), category, description, parseInt(min_stock), brand, tire_size]
         );
 
         const newProduct = await db.get('SELECT * FROM products WHERE id = ?', [result.id]);
@@ -134,7 +150,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, barcode, price, stock, category, description } = req.body;
+        const { name, sku, barcode, price, cost, stock, category, description, min_stock, brand, tire_size } = req.body;
 
         const db = new Database();
 
@@ -142,6 +158,14 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
         const existingProduct = await db.get('SELECT * FROM products WHERE id = ?', [id]);
         if (!existingProduct) {
             return res.status(404).json({ error: 'Product not found' });
+        }
+
+        // Check if SKU already exists (excluding current product)
+        if (sku && sku !== existingProduct.sku) {
+            const skuExists = await db.get('SELECT id FROM products WHERE sku = ? AND id != ?', [sku, id]);
+            if (skuExists) {
+                return res.status(400).json({ error: 'SKU already exists' });
+            }
         }
 
         // Check if barcode already exists (excluding current product)
@@ -161,6 +185,14 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
             return res.status(400).json({ error: 'Stock cannot be negative' });
         }
 
+        if (cost !== undefined && cost < 0) {
+            return res.status(400).json({ error: 'Cost cannot be negative' });
+        }
+
+        if (min_stock !== undefined && min_stock < 0) {
+            return res.status(400).json({ error: 'Minimum stock cannot be negative' });
+        }
+
         // Update product
         const updates = [];
         const params = [];
@@ -169,6 +201,10 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
             updates.push('name = ?');
             params.push(name);
         }
+        if (sku !== undefined) {
+            updates.push('sku = ?');
+            params.push(sku);
+        }
         if (barcode !== undefined) {
             updates.push('barcode = ?');
             params.push(barcode);
@@ -176,6 +212,10 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
         if (price !== undefined) {
             updates.push('price = ?');
             params.push(parseFloat(price));
+        }
+        if (cost !== undefined) {
+            updates.push('cost = ?');
+            params.push(cost ? parseFloat(cost) : null);
         }
         if (stock !== undefined) {
             updates.push('stock = ?');
@@ -188,6 +228,18 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
         if (description !== undefined) {
             updates.push('description = ?');
             params.push(description);
+        }
+        if (min_stock !== undefined) {
+            updates.push('min_stock = ?');
+            params.push(parseInt(min_stock));
+        }
+        if (brand !== undefined) {
+            updates.push('brand = ?');
+            params.push(brand);
+        }
+        if (tire_size !== undefined) {
+            updates.push('tire_size = ?');
+            params.push(tire_size);
         }
 
         updates.push('updated_at = CURRENT_TIMESTAMP');
