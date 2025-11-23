@@ -88,7 +88,7 @@ function initializeDatabase() {
         // Insert default settings
         const defaultSettings = [
             ['tax_rate', '10.0', 'Default tax rate percentage'],
-            ['currency', 'USD', 'Currency symbol'],
+            ['currency', 'PHP', 'Currency symbol'],
             ['company_name', 'Your Store Name', 'Company name for receipts'],
             ['company_address', '123 Main St, City, State 12345', 'Company address'],
             ['receipt_footer', 'Thank you for your business!', 'Receipt footer message'],

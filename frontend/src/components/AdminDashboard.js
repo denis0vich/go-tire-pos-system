@@ -26,11 +26,27 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   
-  // Dashboard data
+  // Currency formatting helper
+  const formatCurrency = (amount) => {
+    const currency = settingsForm.currency || settings.currency?.value || 'PHP';
+    const symbols = {
+      'PHP': '₱',
+      'USD': '$',
+      'EUR': '€',
+      'GBP': '£'
+    };
+    const symbol = symbols[currency] || '₱';
+    return `${symbol}${parseFloat(amount || 0).toFixed(2)}`;
+  };
+  
+  // Dashboard data (currently unused but kept for future use)
+  // eslint-disable-next-line no-unused-vars
   const [dashboardData, setDashboardData] = useState({});
   
   // Products data
   const [products, setProducts] = useState([]);
+  const [productsPagination, setProductsPagination] = useState({ page: 1, limit: 100, total: 0, pages: 1 });
+  const [totalProductsCount, setTotalProductsCount] = useState(0);
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [productForm, setProductForm] = useState({
@@ -52,9 +68,11 @@ const AdminDashboard = () => {
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   
-  // Sales data
+  // Sales data (currently unused but kept for future use)
+  // eslint-disable-next-line no-unused-vars
   const [salesData, setSalesData] = useState({});
   const [salesHistory, setSalesHistory] = useState([]);
+  const [salesPagination, setSalesPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 });
   
   // Reports data
   const [reportPeriod, setReportPeriod] = useState('monthly');
@@ -69,6 +87,13 @@ const AdminDashboard = () => {
   
   // Settings data
   const [settings, setSettings] = useState({});
+  const [settingsForm, setSettingsForm] = useState({
+    store_name: '',
+    store_address: '',
+    phone: '',
+    tax_rate: '',
+    currency: 'PHP'
+  });
   
   // Backup data
   const [backups, setBackups] = useState([]);
@@ -82,9 +107,9 @@ const AdminDashboard = () => {
         // Load all essential data in parallel
         await Promise.all([
           fetchDashboardData(),
-          fetchProducts(),
+          fetchProducts(1, 100),
           fetchUsers(),
-          fetchSalesReports(),
+          fetchSalesReports(1, 50),
           fetchSettings(),
           fetchBackups()
         ]);
@@ -103,6 +128,7 @@ const AdminDashboard = () => {
     if (activeTab === 'reports') {
       fetchReportData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, reportPeriod]);
 
   const fetchDashboardData = async () => {
@@ -114,10 +140,14 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (page = 1, limit = 100) => {
     try {
-      const response = await axios.get('/api/products?limit=100');
+      const response = await axios.get(`/api/products?page=${page}&limit=${limit}`);
       setProducts(response.data.products || []);
+      if (response.data.pagination) {
+        setProductsPagination(response.data.pagination);
+        setTotalProductsCount(response.data.pagination.total); // Store total count for dashboard
+      }
     } catch (error) {
       toast.error('Failed to load products');
     }
@@ -132,13 +162,16 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchSalesReports = async () => {
+  const fetchSalesReports = async (page = 1, limit = 50) => {
     try {
       const response = await axios.get('/api/sales/reports/summary');
       setSalesData(response.data);
       
-      const historyResponse = await axios.get('/api/sales?limit=50');
+      const historyResponse = await axios.get(`/api/sales?page=${page}&limit=${limit}`);
       setSalesHistory(historyResponse.data.sales || []);
+      if (historyResponse.data.pagination) {
+        setSalesPagination(historyResponse.data.pagination);
+      }
     } catch (error) {
       toast.error('Failed to load sales reports');
     }
@@ -147,9 +180,40 @@ const AdminDashboard = () => {
   const fetchSettings = async () => {
     try {
       const response = await axios.get('/api/settings');
-      setSettings(response.data || {});
+      const settingsData = response.data || {};
+      setSettings(settingsData);
+      
+      // Update form with current settings
+      setSettingsForm({
+        store_name: settingsData.company_name?.value || '',
+        store_address: settingsData.company_address?.value || '',
+        phone: settingsData.phone?.value || '',
+        tax_rate: settingsData.tax_rate?.value || '10.0',
+        currency: settingsData.currency?.value || 'PHP'
+      });
     } catch (error) {
       toast.error('Failed to load settings');
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      setLoading(true);
+      const settingsToUpdate = {
+        company_name: settingsForm.store_name,
+        company_address: settingsForm.store_address,
+        phone: settingsForm.phone,
+        tax_rate: settingsForm.tax_rate.toString(),
+        currency: settingsForm.currency
+      };
+      
+      await axios.put('/api/settings', { settings: settingsToUpdate });
+      toast.success('Settings saved successfully');
+      fetchSettings(); // Refresh settings
+    } catch (error) {
+      toast.error('Failed to save settings');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -165,7 +229,7 @@ const AdminDashboard = () => {
   const handleCreateBackup = async () => {
     try {
       setLoading(true);
-      const response = await axios.post('/api/backup/create');
+      await axios.post('/api/backup/create');
       toast.success('Backup created successfully');
       fetchBackups(); // Refresh the backup list
     } catch (error) {
@@ -319,7 +383,7 @@ const AdminDashboard = () => {
       }
       
       setShowProductModal(false);
-      fetchProducts();
+      fetchProducts(productsPagination.page, productsPagination.limit);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to save product');
     } finally {
@@ -333,7 +397,7 @@ const AdminDashboard = () => {
     try {
       await axios.delete(`/api/products/${productId}`);
       toast.success('Product deleted successfully');
-      fetchProducts();
+      fetchProducts(productsPagination.page, productsPagination.limit);
     } catch (error) {
       toast.error('Failed to delete product');
     }
@@ -572,7 +636,7 @@ const AdminDashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="period" />
                 <YAxis />
-                <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'Revenue']} />
+                <Tooltip formatter={(value) => [formatCurrency(value), 'Revenue']} />
                 <Area type="monotone" dataKey="revenue" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} />
               </AreaChart>
             </ResponsiveContainer>
@@ -625,13 +689,13 @@ const AdminDashboard = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {salesHistory.slice(0, 10).map(sale => (
+              {salesHistory.map(sale => (
                 <tr key={sale.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {new Date(sale.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    ${parseFloat(sale.total_amount || sale.total || 0).toFixed(2)}
+                    {formatCurrency(sale.total_amount || sale.total || 0)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {sale.items_count || sale.items?.length || 0} items
@@ -644,6 +708,48 @@ const AdminDashboard = () => {
             </tbody>
           </table>
         </div>
+        
+        {/* Pagination Controls */}
+        {salesPagination.pages > 1 && (
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+            <div className="text-sm text-gray-700">
+              Showing {((salesPagination.page - 1) * salesPagination.limit) + 1} to {Math.min(salesPagination.page * salesPagination.limit, salesPagination.total)} of {salesPagination.total} sales
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => fetchSalesReports(salesPagination.page - 1, salesPagination.limit)}
+                disabled={salesPagination.page === 1}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="px-4 py-2 text-sm font-medium text-gray-700">
+                Page {salesPagination.page} of {salesPagination.pages}
+              </span>
+              <button
+                onClick={() => fetchSalesReports(salesPagination.page + 1, salesPagination.limit)}
+                disabled={salesPagination.page >= salesPagination.pages}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+              <select
+                value={salesPagination.limit}
+                onChange={(e) => {
+                  const newLimit = parseInt(e.target.value);
+                  setSalesPagination({ ...salesPagination, limit: newLimit, page: 1 });
+                  fetchSalesReports(1, newLimit);
+                }}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="20">20 per page</option>
+                <option value="50">50 per page</option>
+                <option value="100">100 per page</option>
+                <option value="200">200 per page</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -663,7 +769,8 @@ const AdminDashboard = () => {
             </label>
             <input
               type="text"
-              value={settings.store_name || 'Premium Tire Center'}
+              value={settingsForm.store_name}
+              onChange={(e) => setSettingsForm({...settingsForm, store_name: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
@@ -673,7 +780,8 @@ const AdminDashboard = () => {
             </label>
             <input
               type="text"
-              value={settings.store_address || '123 Auto Way, Tire City, TC 12345'}
+              value={settingsForm.store_address}
+              onChange={(e) => setSettingsForm({...settingsForm, store_address: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
@@ -683,7 +791,8 @@ const AdminDashboard = () => {
             </label>
             <input
               type="text"
-              value={settings.phone || '(555) TIRE-123'}
+              value={settingsForm.phone}
+              onChange={(e) => setSettingsForm({...settingsForm, phone: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
@@ -694,14 +803,35 @@ const AdminDashboard = () => {
             <input
               type="number"
               step="0.01"
-              value={settings.tax_rate || 10}
+              value={settingsForm.tax_rate}
+              onChange={(e) => setSettingsForm({...settingsForm, tax_rate: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Currency
+            </label>
+            <select
+              value={settingsForm.currency}
+              onChange={(e) => setSettingsForm({...settingsForm, currency: e.target.value})}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="PHP">PHP (₱)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+            </select>
+          </div>
         </div>
         <div className="mt-6">
-          <button className="btn btn-primary">
-            Save Settings
+          <button 
+            onClick={handleSaveSettings}
+            disabled={loading}
+            className="btn btn-primary flex items-center gap-2"
+          >
+            <Save className="w-4 h-4" />
+            {loading ? 'Saving...' : 'Save Settings'}
           </button>
         </div>
       </div>
@@ -857,7 +987,7 @@ Returns: 7 days with receipt</textarea>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-blue-100 text-sm font-medium">Total Products</p>
-                <p className="text-4xl font-bold">{products.length}</p>
+                <p className="text-4xl font-bold">{totalProductsCount || products.length}</p>
               </div>
               <div className="p-4 bg-white bg-opacity-20 rounded-xl backdrop-blur-sm">
                 <Package className="w-8 h-8" />
@@ -881,8 +1011,8 @@ Returns: 7 days with receipt</textarea>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-green-100 text-sm font-medium">Total Sales (7d)</p>
-                <p className="text-4xl font-bold">
-                  ${analytics.dailySales.reduce((sum, day) => sum + day.sales, 0).toFixed(2)}
+                  <p className="text-4xl font-bold">
+                  {formatCurrency(analytics.dailySales.reduce((sum, day) => sum + day.sales, 0))}
                 </p>
               </div>
               <div className="p-4 bg-white bg-opacity-20 rounded-xl backdrop-blur-sm">
@@ -920,7 +1050,7 @@ Returns: 7 days with receipt</textarea>
                 <XAxis dataKey="date" stroke="#64748b" />
                 <YAxis stroke="#64748b" />
                 <Tooltip 
-                  formatter={(value) => [`$${value.toFixed(2)}`, 'Sales']}
+                  formatter={(value) => [formatCurrency(value), 'Sales']}
                   contentStyle={{
                     backgroundColor: 'white',
                     border: '1px solid #e2e8f0',
@@ -1045,10 +1175,10 @@ Returns: 7 days with receipt</textarea>
                     {product.tire_size || product.category || 'N/A'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600">
-                    ${parseFloat(product.price).toFixed(2)}
+                    {formatCurrency(product.price)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-600">
-                    {product.cost ? `$${parseFloat(product.cost).toFixed(2)}` : 'N/A'}
+                    {product.cost ? formatCurrency(product.cost) : 'N/A'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -1086,6 +1216,48 @@ Returns: 7 days with receipt</textarea>
             </tbody>
           </table>
         </div>
+        
+        {/* Pagination Controls */}
+        {productsPagination.pages > 1 && (
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+            <div className="text-sm text-gray-700">
+              Showing {((productsPagination.page - 1) * productsPagination.limit) + 1} to {Math.min(productsPagination.page * productsPagination.limit, productsPagination.total)} of {productsPagination.total} products
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => fetchProducts(productsPagination.page - 1, productsPagination.limit)}
+                disabled={productsPagination.page === 1}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="px-4 py-2 text-sm font-medium text-gray-700">
+                Page {productsPagination.page} of {productsPagination.pages}
+              </span>
+              <button
+                onClick={() => fetchProducts(productsPagination.page + 1, productsPagination.limit)}
+                disabled={productsPagination.page >= productsPagination.pages}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+              <select
+                value={productsPagination.limit}
+                onChange={(e) => {
+                  const newLimit = parseInt(e.target.value);
+                  setProductsPagination({ ...productsPagination, limit: newLimit, page: 1 });
+                  fetchProducts(1, newLimit);
+                }}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="50">50 per page</option>
+                <option value="100">100 per page</option>
+                <option value="200">200 per page</option>
+                <option value="500">500 per page</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import axios from 'axios';
@@ -30,7 +30,11 @@ const CashierDashboard = () => {
   const [lastSale, setLastSale] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [salesHistory, setSalesHistory] = useState([]);
+  const [salesPagination, setSalesPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
   const [showProductSearch, setShowProductSearch] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchPagination, setSearchPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 });
+  const [isSearching, setIsSearching] = useState(false);
   const [adminOverride, setAdminOverride] = useState(false);
   const [overrideDiscount, setOverrideDiscount] = useState(0);
   const [manualPrice, setManualPrice] = useState('');
@@ -38,6 +42,37 @@ const CashierDashboard = () => {
 
   // Admin override barcode (secret)
   const ADMIN_OVERRIDE_BARCODE = 'ADMIN_OVERRIDE_2024';
+
+  const fetchProducts = async () => {
+    try {
+      const response = await axios.get('/api/products?limit=100');
+      setProducts(response.data.products || []);
+    } catch (error) {
+      toast.error('Failed to load products');
+    }
+  };
+
+  const searchProducts = useCallback(async (searchTerm, page = 1, limit = 50) => {
+    if (!searchTerm || searchTerm.trim() === '') {
+      setSearchResults([]);
+      setSearchPagination({ page: 1, limit: 50, total: 0, pages: 1 });
+      return;
+    }
+
+    try {
+      setIsSearching(true);
+      const response = await axios.get(`/api/products?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${limit}`);
+      setSearchResults(response.data.products || []);
+      if (response.data.pagination) {
+        setSearchPagination(response.data.pagination);
+      }
+    } catch (error) {
+      toast.error('Failed to search products');
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchProducts();
@@ -47,19 +82,26 @@ const CashierDashboard = () => {
     }
   }, []);
 
-  const fetchProducts = async () => {
-    try {
-      const response = await axios.get('/api/products');
-      setProducts(response.data.products || []);
-    } catch (error) {
-      toast.error('Failed to load products');
+  // Debounced search when search term changes in product search modal
+  useEffect(() => {
+    if (showProductSearch && searchTerm) {
+      const timeoutId = setTimeout(() => {
+        searchProducts(searchTerm, 1, 50);
+      }, 300); // 300ms debounce
+      return () => clearTimeout(timeoutId);
+    } else if (showProductSearch && !searchTerm) {
+      setSearchResults([]);
+      setSearchPagination({ page: 1, limit: 50, total: 0, pages: 1 });
     }
-  };
+  }, [searchTerm, showProductSearch, searchProducts]);
 
-  const fetchSalesHistory = async () => {
+  const fetchSalesHistory = async (page = 1, limit = 20) => {
     try {
-      const response = await axios.get('/api/sales');
+      const response = await axios.get(`/api/sales?page=${page}&limit=${limit}`);
       setSalesHistory(response.data.sales || []);
+      if (response.data.pagination) {
+        setSalesPagination(response.data.pagination);
+      }
     } catch (error) {
       toast.error('Failed to load sales history');
     }
@@ -395,14 +437,17 @@ const CashierDashboard = () => {
     };
   };
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.barcode?.includes(searchTerm) ||
-    product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.tire_size?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Use search results if available, otherwise fall back to client-side filtering
+  const filteredProducts = searchTerm && showProductSearch && searchResults.length > 0 
+    ? searchResults 
+    : products.filter(product =>
+        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.barcode?.includes(searchTerm) ||
+        product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.tire_size?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
 
   const totals = calculateTotal();
 
@@ -861,7 +906,11 @@ const CashierDashboard = () => {
             <div className="modal-header">
               <h3 className="modal-title">Search Products</h3>
               <button
-                onClick={() => setShowProductSearch(false)}
+                onClick={() => {
+                  setShowProductSearch(false);
+                  setSearchTerm('');
+                  setSearchResults([]);
+                }}
                 className="modal-close"
               >
                 ×
@@ -875,50 +924,90 @@ const CashierDashboard = () => {
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by product name, brand, or barcode..."
+                  placeholder="Search by product name, brand, SKU, barcode, or category..."
                   className="form-input pl-10"
                   autoFocus
                 />
               </div>
+              {searchTerm && (
+                <p className="text-xs text-gray-500 mt-2">
+                  {isSearching ? 'Searching...' : searchPagination.total > 0 ? `Found ${searchPagination.total} product${searchPagination.total !== 1 ? 's' : ''}` : 'No products found'}
+                </p>
+              )}
             </div>
 
             <div className="max-h-96 overflow-y-auto">
-              {filteredProducts.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">No products found</p>
+              {isSearching ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                  <p className="text-gray-500">Searching products...</p>
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">
+                  {searchTerm ? 'No products found matching your search' : 'Start typing to search for products'}
+                </p>
               ) : (
-                <div className="space-y-2">
-                  {filteredProducts.map(product => (
-                    <div
-                      key={product.id}
-                      className={`p-3 border rounded cursor-pointer hover:bg-gray-50 ${
-                        product.stock <= 0 ? 'opacity-50' : ''
-                      }`}
-                      onClick={() => {
-                        if (product.stock > 0) {
-                          addToCart(product);
-                          setShowProductSearch(false);
-                          setSearchTerm('');
-                        }
-                      }}
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h4 className="font-medium">{product.name}</h4>
-                          <p className="text-sm text-gray-500">
-                            {product.brand} • {product.sku || product.tire_size} • {product.category}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-green-600">${product.price}</p>
-                          <p className="text-xs text-gray-500">
-                            Stock: {product.stock}
-                            {product.stock <= 0 && <span className="text-red-500 ml-1">(Out)</span>}
-                          </p>
+                <>
+                  <div className="space-y-2">
+                    {filteredProducts.map(product => (
+                      <div
+                        key={product.id}
+                        className={`p-3 border rounded cursor-pointer hover:bg-gray-50 transition-colors ${
+                          product.stock <= 0 ? 'opacity-50' : ''
+                        }`}
+                        onClick={() => {
+                          if (product.stock > 0) {
+                            addToCart(product);
+                            setShowProductSearch(false);
+                            setSearchTerm('');
+                            setSearchResults([]);
+                          }
+                        }}
+                      >
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <h4 className="font-medium">{product.name}</h4>
+                            <p className="text-sm text-gray-500">
+                              {product.brand} • {product.sku || product.tire_size} • {product.category}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-green-600">${product.price}</p>
+                            <p className="text-xs text-gray-500">
+                              Stock: {product.stock}
+                              {product.stock <= 0 && <span className="text-red-500 ml-1">(Out)</span>}
+                            </p>
+                          </div>
                         </div>
                       </div>
+                    ))}
+                  </div>
+                  
+                  {/* Pagination for search results */}
+                  {searchPagination.pages > 1 && (
+                    <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
+                      <div className="text-sm text-gray-700">
+                        Page {searchPagination.page} of {searchPagination.pages}
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => searchProducts(searchTerm, searchPagination.page - 1, searchPagination.limit)}
+                          disabled={searchPagination.page === 1}
+                          className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Previous
+                        </button>
+                        <button
+                          onClick={() => searchProducts(searchTerm, searchPagination.page + 1, searchPagination.limit)}
+                          disabled={searchPagination.page >= searchPagination.pages}
+                          className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -961,6 +1050,47 @@ const CashierDashboard = () => {
                 </tbody>
               </table>
             </div>
+            
+            {/* Pagination Controls */}
+            {salesPagination.pages > 1 && (
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                <div className="text-sm text-gray-700">
+                  Showing {((salesPagination.page - 1) * salesPagination.limit) + 1} to {Math.min(salesPagination.page * salesPagination.limit, salesPagination.total)} of {salesPagination.total} sales
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => fetchSalesHistory(salesPagination.page - 1, salesPagination.limit)}
+                    disabled={salesPagination.page === 1}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-4 py-2 text-sm font-medium text-gray-700">
+                    Page {salesPagination.page} of {salesPagination.pages}
+                  </span>
+                  <button
+                    onClick={() => fetchSalesHistory(salesPagination.page + 1, salesPagination.limit)}
+                    disabled={salesPagination.page >= salesPagination.pages}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                  <select
+                    value={salesPagination.limit}
+                    onChange={(e) => {
+                      const newLimit = parseInt(e.target.value);
+                      setSalesPagination({ ...salesPagination, limit: newLimit, page: 1 });
+                      fetchSalesHistory(1, newLimit);
+                    }}
+                    className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="20">20 per page</option>
+                    <option value="50">50 per page</option>
+                    <option value="100">100 per page</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
