@@ -38,6 +38,7 @@ const CashierDashboard = () => {
   const [adminOverride, setAdminOverride] = useState(false);
   const [overrideDiscount, setOverrideDiscount] = useState(0);
   const [manualPrice, setManualPrice] = useState('');
+  const [settings, setSettings] = useState({});
   const barcodeInputRef = useRef(null);
 
   // Admin override barcode (secret)
@@ -74,8 +75,18 @@ const CashierDashboard = () => {
     }
   }, []);
 
+  const fetchSettings = async () => {
+    try {
+      const response = await axios.get('/api/settings');
+      setSettings(response.data || {});
+    } catch (error) {
+      console.error('Failed to load settings');
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
+    fetchSettings();
     // Focus barcode input on component mount
     if (barcodeInputRef.current) {
       barcodeInputRef.current.focus();
@@ -457,7 +468,7 @@ const CashierDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Go Tire Car Care Center POS</h1>
+              <h1 className="text-2xl font-bold text-gray-900">{settings?.company_name?.value || 'Go Tire Car Care Center'} POS</h1>
               <p className="text-sm text-gray-500">Welcome, {user?.username}</p>
             </div>
             <div className="flex items-center space-x-4">

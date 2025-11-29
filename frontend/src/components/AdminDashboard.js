@@ -333,12 +333,12 @@ const AdminDashboard = () => {
         name: product.name || '',
         sku: product.sku || '',
         barcode: product.barcode || '',
-        price: product.price || '',
-        cost: product.cost || '',
-        stock: product.stock || '',
+        price: product.price?.toString() || '',
+        cost: product.cost?.toString() || '',
+        stock: product.stock?.toString() || '',
         category: product.category || '',
         description: product.description || '',
-        min_stock: product.min_stock || '',
+        min_stock: product.min_stock?.toString() || '',
         tire_size: product.tire_size || '',
         brand: product.brand || ''
       });
@@ -979,7 +979,7 @@ Returns: 7 days with receipt</textarea>
   const renderDashboard = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Go Tire Car Care Center Dashboard</h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">{settings.company_name?.value || 'Go Tire Car Care Center'} Dashboard</h2>
         
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -1528,7 +1528,7 @@ Returns: 7 days with receipt</textarea>
       <div className="w-72 bg-gradient-to-b from-gray-900 to-gray-800 shadow-2xl border-r border-gray-700">
         <div className="p-8">
           <div className="bg-gradient-to-r from-red-600 to-red-700 rounded-2xl p-6 text-white">
-            <h1 className="text-2xl font-bold mb-2">Go Tire Car Care Center Admin</h1>
+            <h1 className="text-2xl font-bold mb-2">{settings.company_name?.value || 'Go Tire Car Care Center'} Admin</h1>
             <p className="text-red-100 text-sm">Welcome back, {user?.username}</p>
           </div>
         </div>
