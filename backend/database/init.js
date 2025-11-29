@@ -1,23 +1,23 @@
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('./db');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure database directory exists
-const dbDir = path.join(__dirname, '../database');
-if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+// Ensure database directory exists (for local SQLite only)
+if (!process.env.TURSO_DATABASE_URL) {
+    const dbDir = path.join(__dirname);
+    if (!fs.existsSync(dbDir)) {
+        fs.mkdirSync(dbDir, { recursive: true });
+    }
 }
 
-const dbPath = path.join(__dirname, 'pos.db');
-
 // Initialize database with tables and default data
-function initializeDatabase() {
-    const db = new sqlite3.Database(dbPath);
+async function initializeDatabase() {
+    const db = new Database();
 
-    db.serialize(() => {
+    try {
         // Users table
-        db.run(`CREATE TABLE IF NOT EXISTS users (
+        await db.run(`CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
@@ -28,20 +28,25 @@ function initializeDatabase() {
         )`);
 
         // Products table
-        db.run(`CREATE TABLE IF NOT EXISTS products (
+        await db.run(`CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
+            sku TEXT,
             barcode TEXT UNIQUE,
             price DECIMAL(10,2) NOT NULL,
+            cost DECIMAL(10,2),
             stock INTEGER DEFAULT 0,
             category TEXT,
             description TEXT,
+            brand TEXT,
+            tire_size TEXT,
+            min_stock INTEGER DEFAULT 5,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
 
         // Sales table
-        db.run(`CREATE TABLE IF NOT EXISTS sales (
+        await db.run(`CREATE TABLE IF NOT EXISTS sales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             cashier_id INTEGER NOT NULL,
             total_amount DECIMAL(10,2) NOT NULL,
@@ -55,7 +60,7 @@ function initializeDatabase() {
         )`);
 
         // Sale items table
-        db.run(`CREATE TABLE IF NOT EXISTS sale_items (
+        await db.run(`CREATE TABLE IF NOT EXISTS sale_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sale_id INTEGER NOT NULL,
             product_id INTEGER NOT NULL,
@@ -67,7 +72,7 @@ function initializeDatabase() {
         )`);
 
         // Settings table
-        db.run(`CREATE TABLE IF NOT EXISTS settings (
+        await db.run(`CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             key TEXT UNIQUE NOT NULL,
             value TEXT NOT NULL,
@@ -77,29 +82,29 @@ function initializeDatabase() {
 
         // Insert default admin user
         const adminPassword = bcrypt.hashSync('admin123', 10);
-        db.run(`INSERT OR IGNORE INTO users (username, password, role, full_name) 
+        await db.run(`INSERT OR IGNORE INTO users (username, password, role, full_name) 
                 VALUES ('admin', ?, 'admin', 'System Administrator')`, [adminPassword]);
 
         // Insert default cashier user
         const cashierPassword = bcrypt.hashSync('cashier123', 10);
-        db.run(`INSERT OR IGNORE INTO users (username, password, role, full_name) 
+        await db.run(`INSERT OR IGNORE INTO users (username, password, role, full_name) 
                 VALUES ('cashier', ?, 'cashier', 'Default Cashier')`, [cashierPassword]);
 
         // Insert default settings
         const defaultSettings = [
             ['tax_rate', '10.0', 'Default tax rate percentage'],
             ['currency', 'PHP', 'Currency symbol'],
-            ['company_name', 'Your Store Name', 'Company name for receipts'],
-            ['company_address', '123 Main St, City, State 12345', 'Company address'],
+            ['company_name', 'Go Tire Car Care Center', 'Company name for receipts'],
+            ['company_address', 'B2 L18-B Camarin Road, Camarin Rd, Caloocan, 1400 Metro Manila', 'Company address'],
             ['receipt_footer', 'Thank you for your business!', 'Receipt footer message'],
             ['backup_interval', '60', 'Backup interval in minutes'],
             ['backup_retention', '30', 'Number of backups to retain']
         ];
 
-        defaultSettings.forEach(([key, value, description]) => {
-            db.run(`INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)`, 
+        for (const [key, value, description] of defaultSettings) {
+            await db.run(`INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)`, 
                    [key, value, description]);
-        });
+        }
 
         // Insert sample products
         const sampleProducts = [
@@ -110,23 +115,27 @@ function initializeDatabase() {
             ['Bananas 1kg', '1234567890127', 2.99, 25, 'Fruits']
         ];
 
-        sampleProducts.forEach(([name, barcode, price, stock, category]) => {
-            db.run(`INSERT OR IGNORE INTO products (name, barcode, price, stock, category) 
+        for (const [name, barcode, price, stock, category] of sampleProducts) {
+            await db.run(`INSERT OR IGNORE INTO products (name, barcode, price, stock, category) 
                     VALUES (?, ?, ?, ?, ?)`, [name, barcode, price, stock, category]);
-        });
+        }
+
+        await db.close();
 
         console.log('Database initialized successfully!');
         console.log('Default login credentials:');
         console.log('Admin: admin / admin123');
         console.log('Cashier: cashier / cashier123');
-    });
-
-    db.close();
+    } catch (error) {
+        console.error('Database initialization error:', error);
+        await db.close();
+        throw error;
+    }
 }
 
 // Run initialization if called directly
 if (require.main === module) {
-    initializeDatabase();
+    initializeDatabase().catch(console.error);
 }
 
 module.exports = { initializeDatabase };

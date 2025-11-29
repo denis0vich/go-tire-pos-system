@@ -367,9 +367,8 @@ const CashierDashboard = () => {
       </head>
       <body>
         <div class="header">
-          <h1>🏁 Premium Auto Parts Center</h1>
-          <p>123 Auto Way, Auto City, AC 12345</p>
-          <p>Tel: (555) AUTO-123 | Web: autoparts.com</p>
+          <h1>Go Tire Car Care Center</h1>
+          <p>B2 L18-B Camarin Road, Camarin Rd, Caloocan, 1400 Metro Manila</p>
           <div class="separator">================================</div>
           <p>Sale ID: #${lastSale.sale.id}</p>
           <p>Date: ${new Date(lastSale.sale.created_at).toLocaleDateString()}</p>
@@ -419,7 +418,7 @@ const CashierDashboard = () => {
           <p>Warranty: 30 days on parts</p>
           <p>Returns: 7 days with receipt</p>
           <div class="separator">================================</div>
-          <p>Auto Parts Center</p>
+          <p>Go Tire Car Care Center</p>
           <p>Your trusted automotive partner</p>
         </div>
       </body>
@@ -458,7 +457,7 @@ const CashierDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">🏁 Auto Parts Store POS</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Go Tire Car Care Center POS</h1>
               <p className="text-sm text-gray-500">Welcome, {user?.username}</p>
             </div>
             <div className="flex items-center space-x-4">
@@ -815,9 +814,8 @@ const CashierDashboard = () => {
 
             <div className="receipt">
               <div className="receipt-header">
-                <h3>🏁 Premium Auto Parts Center</h3>
-                <p>123 Auto Way, Auto City, AC 12345</p>
-                <p>Tel: (555) AUTO-123 | Web: autoparts.com</p>
+                <h3>Go Tire Car Care Center</h3>
+                <p>B2 L18-B Camarin Road, Camarin Rd, Caloocan, 1400 Metro Manila</p>
                 <p>================================</p>
                 <p>Sale ID: #{lastSale.sale.id}</p>
                 <p>Date: {new Date(lastSale.sale.created_at).toLocaleDateString()}</p>

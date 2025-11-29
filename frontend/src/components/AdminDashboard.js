@@ -979,7 +979,7 @@ Returns: 7 days with receipt</textarea>
   const renderDashboard = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">🏁 Auto Parts Dashboard</h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">Go Tire Car Care Center Dashboard</h2>
         
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -1528,7 +1528,7 @@ Returns: 7 days with receipt</textarea>
       <div className="w-72 bg-gradient-to-b from-gray-900 to-gray-800 shadow-2xl border-r border-gray-700">
         <div className="p-8">
           <div className="bg-gradient-to-r from-red-600 to-red-700 rounded-2xl p-6 text-white">
-            <h1 className="text-2xl font-bold mb-2">🏁 Auto Parts Admin</h1>
+            <h1 className="text-2xl font-bold mb-2">Go Tire Car Care Center Admin</h1>
             <p className="text-red-100 text-sm">Welcome back, {user?.username}</p>
           </div>
         </div>

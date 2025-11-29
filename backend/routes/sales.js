@@ -20,117 +20,178 @@ router.post('/', authenticateToken, requireCashier, async (req, res) => {
 
         const db = new Database();
 
-        // Start transaction
-        await db.run('BEGIN TRANSACTION');
+        // Get tax rate from settings (before transaction)
+        const taxSetting = await db.get('SELECT value FROM settings WHERE key = ?', ['tax_rate']);
+        const taxRate = parseFloat(taxSetting?.value || 0) / 100;
 
-        try {
-            // Get tax rate from settings
-            const taxSetting = await db.get('SELECT value FROM settings WHERE key = ?', ['tax_rate']);
-            const taxRate = parseFloat(taxSetting?.value || 0) / 100;
+        let subtotal = 0;
+        const saleItems = [];
 
-            let subtotal = 0;
-            const saleItems = [];
+        // Validate items and calculate totals (before transaction)
+        for (const item of items) {
+            const { product_id, quantity } = item;
 
-            // Validate items and calculate totals
-            for (const item of items) {
-                const { product_id, quantity } = item;
-
-                if (!product_id || !quantity || quantity <= 0) {
-                    throw new Error('Invalid item data');
-                }
-
-                // Get product details
-                const product = await db.get('SELECT * FROM products WHERE id = ?', [product_id]);
-                if (!product) {
-                    throw new Error(`Product with ID ${product_id} not found`);
-                }
-
-                // Check stock availability
-                if (product.stock < quantity) {
-                    throw new Error(`Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${quantity}`);
-                }
-
-                const itemTotal = product.price * quantity;
-                subtotal += itemTotal;
-
-                saleItems.push({
-                    product_id,
-                    quantity,
-                    unit_price: product.price,
-                    total_price: itemTotal
-                });
+            if (!product_id || !quantity || quantity <= 0) {
+                return res.status(400).json({ error: 'Invalid item data' });
             }
 
-            // Calculate tax and total
-            const tax_amount = (subtotal - discount_amount) * taxRate;
-            const total_amount = subtotal - discount_amount + tax_amount;
-
-            // Calculate change
-            const change_given = payment_received ? Math.max(0, payment_received - total_amount) : 0;
-
-            // Insert sale record
-            const saleResult = await db.run(
-                `INSERT INTO sales (cashier_id, total_amount, tax_amount, discount_amount, 
-                 payment_method, payment_received, change_given) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                [cashier_id, total_amount, tax_amount, discount_amount, 
-                 payment_method, payment_received, change_given]
-            );
-
-            const sale_id = saleResult.id;
-
-            // Insert sale items and update stock
-            for (const item of saleItems) {
-                // Insert sale item
-                await db.run(
-                    'INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
-                    [sale_id, item.product_id, item.quantity, item.unit_price, item.total_price]
-                );
-
-                // Update product stock
-                await db.run(
-                    'UPDATE products SET stock = stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-                    [item.quantity, item.product_id]
-                );
+            // Get product details
+            const product = await db.get('SELECT * FROM products WHERE id = ?', [product_id]);
+            if (!product) {
+                return res.status(400).json({ error: `Product with ID ${product_id} not found` });
             }
 
-            // Commit transaction
-            await db.run('COMMIT');
+            // Check stock availability
+            if (product.stock < quantity) {
+                return res.status(400).json({ error: `Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${quantity}` });
+            }
 
-            // Get complete sale data for response
-            const sale = await db.get(`
-                SELECT s.*, u.full_name as cashier_name 
-                FROM sales s 
-                JOIN users u ON s.cashier_id = u.id 
-                WHERE s.id = ?
-            `, [sale_id]);
+            const itemTotal = product.price * quantity;
+            subtotal += itemTotal;
 
-            const saleItemsWithProducts = await db.query(`
-                SELECT si.*, p.name as product_name, p.barcode 
-                FROM sale_items si 
-                JOIN products p ON si.product_id = p.id 
-                WHERE si.sale_id = ?
-            `, [sale_id]);
-
-            res.status(201).json({
-                sale,
-                items: saleItemsWithProducts,
-                receipt_data: {
-                    subtotal,
-                    discount_amount,
-                    tax_amount,
-                    total_amount,
-                    payment_received,
-                    change_given
-                }
+            saleItems.push({
+                product_id,
+                quantity,
+                unit_price: product.price,
+                total_price: itemTotal
             });
-
-        } catch (error) {
-            // Rollback transaction on error
-            await db.run('ROLLBACK');
-            throw error;
         }
 
+        // Calculate tax and total
+        const tax_amount = (subtotal - discount_amount) * taxRate;
+        const total_amount = subtotal - discount_amount + tax_amount;
+
+        // Calculate change
+        const change_given = payment_received ? Math.max(0, payment_received - total_amount) : 0;
+
+        // Use transaction for atomic operations
+        try {
+            // Check if using Turso
+            const isUsingTurso = db.client !== undefined;
+            
+            if (isUsingTurso) {
+                // Turso: Execute operations sequentially (each execute is atomic)
+                // Insert sale record
+                const saleResult = await db.run(
+                    `INSERT INTO sales (cashier_id, total_amount, tax_amount, discount_amount, 
+                     payment_method, payment_received, change_given) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                    [cashier_id, total_amount, tax_amount, discount_amount, 
+                     payment_method, payment_received, change_given]
+                );
+
+                const sale_id = saleResult.id;
+
+                // Insert sale items and update stock
+                for (const item of saleItems) {
+                    await db.run(
+                        'INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
+                        [sale_id, item.product_id, item.quantity, item.unit_price, item.total_price]
+                    );
+
+                    await db.run(
+                        'UPDATE products SET stock = stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                        [item.quantity, item.product_id]
+                    );
+                }
+
+                // Get complete sale data for response
+                const sale = await db.get(`
+                    SELECT s.*, u.full_name as cashier_name 
+                    FROM sales s 
+                    JOIN users u ON s.cashier_id = u.id 
+                    WHERE s.id = ?
+                `, [sale_id]);
+
+                const saleItemsWithProducts = await db.query(`
+                    SELECT si.*, p.name as product_name, p.barcode 
+                    FROM sale_items si 
+                    JOIN products p ON si.product_id = p.id 
+                    WHERE si.sale_id = ?
+                `, [sale_id]);
+
+                res.status(201).json({
+                    sale,
+                    items: saleItemsWithProducts,
+                    receipt_data: {
+                        subtotal,
+                        discount_amount,
+                        tax_amount,
+                        total_amount,
+                        payment_received,
+                        change_given
+                    }
+                });
+            } else {
+                // Local SQLite: Use explicit transaction
+                await db.run('BEGIN TRANSACTION');
+
+                try {
+                    // Insert sale record
+                    const saleResult = await db.run(
+                        `INSERT INTO sales (cashier_id, total_amount, tax_amount, discount_amount, 
+                         payment_method, payment_received, change_given) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                        [cashier_id, total_amount, tax_amount, discount_amount, 
+                         payment_method, payment_received, change_given]
+                    );
+
+                    const sale_id = saleResult.id;
+
+                    // Insert sale items and update stock
+                    for (const item of saleItems) {
+                        await db.run(
+                            'INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
+                            [sale_id, item.product_id, item.quantity, item.unit_price, item.total_price]
+                        );
+
+                        await db.run(
+                            'UPDATE products SET stock = stock - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                            [item.quantity, item.product_id]
+                        );
+                    }
+
+                    await db.run('COMMIT');
+
+                    // Get complete sale data for response
+                    const sale = await db.get(`
+                        SELECT s.*, u.full_name as cashier_name 
+                        FROM sales s 
+                        JOIN users u ON s.cashier_id = u.id 
+                        WHERE s.id = ?
+                    `, [sale_id]);
+
+                    const saleItemsWithProducts = await db.query(`
+                        SELECT si.*, p.name as product_name, p.barcode 
+                        FROM sale_items si 
+                        JOIN products p ON si.product_id = p.id 
+                        WHERE si.sale_id = ?
+                    `, [sale_id]);
+
+                    res.status(201).json({
+                        sale,
+                        items: saleItemsWithProducts,
+                        receipt_data: {
+                            subtotal,
+                            discount_amount,
+                            tax_amount,
+                            total_amount,
+                            payment_received,
+                            change_given
+                        }
+                    });
+                } catch (error) {
+                    // Rollback transaction on error (local SQLite only)
+                    await db.run('ROLLBACK');
+                    throw error;
+                }
+            }
+        } catch (error) {
+            console.error('Create sale transaction error:', error);
+            throw error;
+        } finally {
+            await db.close();
+        }
     } catch (error) {
         console.error('Create sale error:', error);
         res.status(400).json({ error: error.message || 'Internal server error' });
