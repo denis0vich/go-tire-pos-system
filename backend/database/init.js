@@ -16,13 +16,13 @@ async function initializeDatabase() {
     const db = new Database();
 
     try {
-        // Users table
         await db.run(`CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
             role TEXT NOT NULL CHECK (role IN ('admin', 'cashier')),
             full_name TEXT,
+            theme_color TEXT DEFAULT '#ef4444',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
@@ -49,14 +49,18 @@ async function initializeDatabase() {
         await db.run(`CREATE TABLE IF NOT EXISTS sales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             cashier_id INTEGER NOT NULL,
+            customer_id INTEGER,
             total_amount DECIMAL(10,2) NOT NULL,
-            tax_amount DECIMAL(10,2) DEFAULT 0,
+            vat_amount DECIMAL(10,2) DEFAULT 0,
             discount_amount DECIMAL(10,2) DEFAULT 0,
             payment_method TEXT NOT NULL,
             payment_received DECIMAL(10,2),
             change_given DECIMAL(10,2),
+            amount_paid DECIMAL(10,2) DEFAULT 0,
+            status TEXT DEFAULT 'completed' CHECK (status IN ('completed', 'pending', 'cancelled')),
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (cashier_id) REFERENCES users (id)
+            FOREIGN KEY (cashier_id) REFERENCES users (id),
+            FOREIGN KEY (customer_id) REFERENCES customers (id)
         )`);
 
         // Sale items table
@@ -67,8 +71,30 @@ async function initializeDatabase() {
             quantity INTEGER NOT NULL,
             unit_price DECIMAL(10,2) NOT NULL,
             total_price DECIMAL(10,2) NOT NULL,
-            FOREIGN KEY (sale_id) REFERENCES sales (id),
+            FOREIGN KEY (sale_id) REFERENCES sales (id) ON DELETE CASCADE,
             FOREIGN KEY (product_id) REFERENCES products (id)
+        )`);
+
+        // Customers table
+        await db.run(`CREATE TABLE IF NOT EXISTS customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            phone TEXT,
+            email TEXT,
+            address TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+
+        // Payments table (for down payments/partial payments)
+        await db.run(`CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sale_id INTEGER NOT NULL,
+            amount DECIMAL(10,2) NOT NULL,
+            payment_method TEXT NOT NULL,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (sale_id) REFERENCES sales (id) ON DELETE CASCADE
         )`);
 
         // Settings table
@@ -92,7 +118,7 @@ async function initializeDatabase() {
 
         // Insert default settings
         const defaultSettings = [
-            ['tax_rate', '10.0', 'Default tax rate percentage'],
+            ['vat_rate', '12.0', 'Default VAT rate percentage'],
             ['currency', 'PHP', 'Currency symbol'],
             ['company_name', 'Go Tire Car Care Center', 'Company name for receipts'],
             ['company_address', 'B2 L18-B Camarin Road, Camarin Rd, Caloocan, 1400 Metro Manila', 'Company address'],

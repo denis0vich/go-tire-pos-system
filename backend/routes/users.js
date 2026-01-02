@@ -44,15 +44,19 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
             [username, hashedPassword, role, full_name]
         );
 
+        if (!result.id) {
+            throw new Error('Failed to retrieve new user ID');
+        }
+
         const newUser = await db.get(
-            'SELECT id, username, role, full_name, created_at FROM users WHERE id = ?',
+            'SELECT id, username, role, full_name, theme_color, created_at FROM users WHERE id = ?',
             [result.id]
         );
 
         res.status(201).json(newUser);
     } catch (error) {
         console.error('Create user error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -108,13 +112,36 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
         );
 
         const updatedUser = await db.get(
-            'SELECT id, username, role, full_name, created_at, updated_at FROM users WHERE id = ?',
+            'SELECT id, username, role, full_name, theme_color, created_at, updated_at FROM users WHERE id = ?',
             [id]
         );
 
         res.json(updatedUser);
     } catch (error) {
         console.error('Update user error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Update user theme color
+router.patch('/theme-color', authenticateToken, async (req, res) => {
+    try {
+        const { theme_color } = req.body;
+        const id = req.user.id;
+
+        if (!theme_color) {
+            return res.status(400).json({ error: 'Theme color is required' });
+        }
+
+        const db = new Database();
+        await db.run(
+            'UPDATE users SET theme_color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            [theme_color, id]
+        );
+
+        res.json({ success: true, theme_color });
+    } catch (error) {
+        console.error('Update theme color error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -173,8 +200,8 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
         // Check if user has sales records
         const salesCount = await db.get('SELECT COUNT(*) as count FROM sales WHERE cashier_id = ?', [id]);
         if (salesCount.count > 0) {
-            return res.status(400).json({ 
-                error: 'Cannot delete user with sales records. Consider deactivating instead.' 
+            return res.status(400).json({
+                error: 'Cannot delete user with sales records. Consider deactivating instead.'
             });
         }
 

@@ -20,9 +20,10 @@ router.post('/', authenticateToken, requireCashier, async (req, res) => {
 
         const db = new Database();
 
-        // Get tax rate from settings (before transaction)
-        const taxSetting = await db.get('SELECT value FROM settings WHERE key = ?', ['tax_rate']);
-        const taxRate = parseFloat(taxSetting?.value || 0) / 100;
+        // Get VAT rate from settings (before transaction)
+        const vatSetting = await db.get('SELECT value FROM settings WHERE key = ?', ['vat_rate'])
+            || await db.get('SELECT value FROM settings WHERE key = ?', ['tax_rate']); // Fallback
+        const vatRate = parseFloat(vatSetting?.value || 0) / 100;
 
         let subtotal = 0;
         const saleItems = [];
@@ -57,30 +58,43 @@ router.post('/', authenticateToken, requireCashier, async (req, res) => {
             });
         }
 
-        // Calculate tax and total
-        const tax_amount = (subtotal - discount_amount) * taxRate;
-        const total_amount = subtotal - discount_amount + tax_amount;
+        // Calculate VAT and total
+        const vat_amount = (subtotal - discount_amount) * vatRate;
+        const total_amount = subtotal - discount_amount + vat_amount;
 
-        // Calculate change
-        const change_given = payment_received ? Math.max(0, payment_received - total_amount) : 0;
+        // Handle payment and status
+        const { customer_id, amount_paid: initial_paid } = req.body;
+        const amount_paid = initial_paid ? parseFloat(initial_paid) : total_amount;
+        const status = amount_paid < total_amount ? 'pending' : 'completed';
+
+        // Calculate change (only if fully paid)
+        const change_given = (status === 'completed' && payment_received) ? Math.max(0, payment_received - total_amount) : 0;
 
         // Use transaction for atomic operations
         try {
             // Check if using Turso
             const isUsingTurso = db.client !== undefined;
-            
+
             if (isUsingTurso) {
                 // Turso: Execute operations sequentially (each execute is atomic)
                 // Insert sale record
                 const saleResult = await db.run(
-                    `INSERT INTO sales (cashier_id, total_amount, tax_amount, discount_amount, 
-                     payment_method, payment_received, change_given) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                    [cashier_id, total_amount, tax_amount, discount_amount, 
-                     payment_method, payment_received, change_given]
+                    `INSERT INTO sales (cashier_id, customer_id, total_amount, vat_amount, discount_amount, 
+                     payment_method, payment_received, change_given, amount_paid, status) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [cashier_id, customer_id, total_amount, vat_amount, discount_amount,
+                        payment_method, payment_received, change_given, amount_paid, status]
                 );
 
                 const sale_id = saleResult.id;
+
+                // Add initial payment to payments table
+                if (amount_paid > 0) {
+                    await db.run(
+                        'INSERT INTO payments (sale_id, amount, payment_method, notes) VALUES (?, ?, ?, ?)',
+                        [sale_id, amount_paid, payment_method, 'Initial payment']
+                    );
+                }
 
                 // Insert sale items and update stock
                 for (const item of saleItems) {
@@ -129,14 +143,22 @@ router.post('/', authenticateToken, requireCashier, async (req, res) => {
                 try {
                     // Insert sale record
                     const saleResult = await db.run(
-                        `INSERT INTO sales (cashier_id, total_amount, tax_amount, discount_amount, 
-                         payment_method, payment_received, change_given) 
-                         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                        [cashier_id, total_amount, tax_amount, discount_amount, 
-                         payment_method, payment_received, change_given]
+                        `INSERT INTO sales (cashier_id, customer_id, total_amount, vat_amount, discount_amount, 
+                         payment_method, payment_received, change_given, amount_paid, status) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [cashier_id, customer_id, total_amount, vat_amount, discount_amount,
+                            payment_method, payment_received, change_given, amount_paid, status]
                     );
 
                     const sale_id = saleResult.id;
+
+                    // Add initial payment to payments table
+                    if (amount_paid > 0) {
+                        await db.run(
+                            'INSERT INTO payments (sale_id, amount, payment_method, notes) VALUES (?, ?, ?, ?)',
+                            [sale_id, amount_paid, payment_method, 'Initial payment']
+                        );
+                    }
 
                     // Insert sale items and update stock
                     for (const item of saleItems) {
@@ -352,7 +374,7 @@ router.get('/reports/summary', authenticateToken, requireAdmin, async (req, res)
             SELECT 
                 COUNT(*) as total_sales,
                 SUM(total_amount) as total_revenue,
-                SUM(tax_amount) as total_tax,
+                SUM(vat_amount) as total_tax,
                 SUM(discount_amount) as total_discounts,
                 AVG(total_amount) as average_sale
             FROM sales ${whereClause}
@@ -431,7 +453,7 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
                         DATE(created_at) as period,
                         COUNT(*) as sales_count,
                         SUM(total_amount) as revenue,
-                        SUM(tax_amount) as tax_collected,
+                        SUM(vat_amount) as tax_collected,
                         SUM(discount_amount) as discounts_given,
                         AVG(total_amount) as avg_sale_amount
                     FROM sales 
@@ -445,7 +467,7 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
                         strftime('%Y-W%W', created_at) as period,
                         COUNT(*) as sales_count,
                         SUM(total_amount) as revenue,
-                        SUM(tax_amount) as tax_collected,
+                        SUM(vat_amount) as tax_collected,
                         SUM(discount_amount) as discounts_given,
                         AVG(total_amount) as avg_sale_amount
                     FROM sales 
@@ -459,7 +481,7 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
                         strftime('%Y-%m', created_at) as period,
                         COUNT(*) as sales_count,
                         SUM(total_amount) as revenue,
-                        SUM(tax_amount) as tax_collected,
+                        SUM(vat_amount) as tax_collected,
                         SUM(discount_amount) as discounts_given,
                         AVG(total_amount) as avg_sale_amount
                     FROM sales 
@@ -473,7 +495,7 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
                         strftime('%Y', created_at) as period,
                         COUNT(*) as sales_count,
                         SUM(total_amount) as revenue,
-                        SUM(tax_amount) as tax_collected,
+                        SUM(vat_amount) as tax_collected,
                         SUM(discount_amount) as discounts_given,
                         AVG(total_amount) as avg_sale_amount
                     FROM sales 
@@ -580,16 +602,16 @@ router.get('/test', authenticateToken, requireAdmin, async (req, res) => {
     try {
         db = new Database();
         const result = await db.query('SELECT COUNT(*) as count FROM sales');
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             sales_count: result[0].count,
-            message: 'Database connection working' 
+            message: 'Database connection working'
         });
     } catch (error) {
         console.error('Test endpoint error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: error.message 
+        res.status(500).json({
+            success: false,
+            error: error.message
         });
     } finally {
         if (db) {
@@ -599,6 +621,34 @@ router.get('/test', authenticateToken, requireAdmin, async (req, res) => {
                 console.error('Error closing database:', closeError);
             }
         }
+    }
+});
+
+// Get product history (who bought it, when, how many)
+router.get('/product/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const db = new Database();
+
+        const history = await db.query(`
+            SELECT 
+                si.quantity,
+                si.unit_price,
+                s.created_at,
+                u.full_name as cashier_name,
+                c.name as customer_name
+            FROM sale_items si
+            JOIN sales s ON si.sale_id = s.id
+            JOIN users u ON s.cashier_id = u.id
+            LEFT JOIN customers c ON s.customer_id = c.id
+            WHERE si.product_id = ?
+            ORDER BY s.created_at DESC
+        `, [id]);
+
+        res.json(history);
+    } catch (error) {
+        console.error('Get product history error:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 

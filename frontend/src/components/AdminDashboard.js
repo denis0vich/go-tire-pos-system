@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import axios from 'axios';
-import { 
-  LayoutDashboard, 
-  Package, 
-  Users, 
-  BarChart3, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Package,
+  Users,
+  BarChart3,
+  Settings,
   Database,
   LogOut,
   Plus,
@@ -16,7 +16,9 @@ import {
   DollarSign,
   AlertTriangle,
   Save,
-  X
+  X,
+  History,
+  Search
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 
@@ -25,7 +27,7 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  
+
   // Currency formatting helper
   const formatCurrency = (amount) => {
     const currency = settingsForm.currency || settings.currency?.value || 'PHP';
@@ -38,11 +40,11 @@ const AdminDashboard = () => {
     const symbol = symbols[currency] || '₱';
     return `${symbol}${parseFloat(amount || 0).toFixed(2)}`;
   };
-  
+
   // Dashboard data (currently unused but kept for future use)
   // eslint-disable-next-line no-unused-vars
   const [dashboardData, setDashboardData] = useState({});
-  
+
   // Products data
   const [products, setProducts] = useState([]);
   const [productsPagination, setProductsPagination] = useState({ page: 1, limit: 100, total: 0, pages: 1 });
@@ -59,45 +61,61 @@ const AdminDashboard = () => {
     category: '',
     description: '',
     min_stock: '',
-    tire_size: '',
     brand: ''
   });
-  
+  const [productHistory, setProductHistory] = useState([]);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [selectedProductForHistory, setSelectedProductForHistory] = useState(null);
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importData, setImportData] = useState('');
+
   // Users data
   const [users, setUsers] = useState([]);
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  
+
+  // Customers data
+  const [customers, setCustomers] = useState([]);
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [customerForm, setCustomerForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    address: ''
+  });
+
   // Sales data (currently unused but kept for future use)
   // eslint-disable-next-line no-unused-vars
   const [salesData, setSalesData] = useState({});
   const [salesHistory, setSalesHistory] = useState([]);
   const [salesPagination, setSalesPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 });
-  
+
   // Reports data
   const [reportPeriod, setReportPeriod] = useState('monthly');
   const [reportData, setReportData] = useState({});
-  
+
   // User management
   const [userForm, setUserForm] = useState({
     username: '',
     password: '',
     role: 'cashier'
   });
-  
+
   // Settings data
   const [settings, setSettings] = useState({});
   const [settingsForm, setSettingsForm] = useState({
     store_name: '',
     store_address: '',
     phone: '',
-    tax_rate: '',
+    vat_rate: '',
     currency: 'PHP'
   });
-  
+
   // Backup data
   const [backups, setBackups] = useState([]);
-  
+
 
   // Load all essential data when component mounts
   useEffect(() => {
@@ -109,6 +127,7 @@ const AdminDashboard = () => {
           fetchDashboardData(),
           fetchProducts(1, 100),
           fetchUsers(),
+          fetchCustomers(),
           fetchSalesReports(1, 50),
           fetchSettings(),
           fetchBackups()
@@ -140,9 +159,10 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchProducts = async (page = 1, limit = 100) => {
+  const fetchProducts = async (page = 1, limit = 100, search = '', category = '') => {
     try {
-      const response = await axios.get(`/api/products?page=${page}&limit=${limit}`);
+      const url = `/api/products?page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}${category ? `&category=${encodeURIComponent(category)}` : ''}`;
+      const response = await axios.get(url);
       setProducts(response.data.products || []);
       if (response.data.pagination) {
         setProductsPagination(response.data.pagination);
@@ -162,11 +182,20 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchCustomers = async () => {
+    try {
+      const response = await axios.get('/api/customers');
+      setCustomers(response.data || []);
+    } catch (error) {
+      toast.error('Failed to load customers');
+    }
+  };
+
   const fetchSalesReports = async (page = 1, limit = 50) => {
     try {
       const response = await axios.get('/api/sales/reports/summary');
       setSalesData(response.data);
-      
+
       const historyResponse = await axios.get(`/api/sales?page=${page}&limit=${limit}`);
       setSalesHistory(historyResponse.data.sales || []);
       if (historyResponse.data.pagination) {
@@ -182,13 +211,13 @@ const AdminDashboard = () => {
       const response = await axios.get('/api/settings');
       const settingsData = response.data || {};
       setSettings(settingsData);
-      
+
       // Update form with current settings
       setSettingsForm({
         store_name: settingsData.company_name?.value || '',
         store_address: settingsData.company_address?.value || '',
         phone: settingsData.phone?.value || '',
-        tax_rate: settingsData.tax_rate?.value || '10.0',
+        vat_rate: settingsData.vat_rate?.value || settingsData.tax_rate?.value || '12.0',
         currency: settingsData.currency?.value || 'PHP'
       });
     } catch (error) {
@@ -203,10 +232,10 @@ const AdminDashboard = () => {
         company_name: settingsForm.store_name,
         company_address: settingsForm.store_address,
         phone: settingsForm.phone,
-        tax_rate: settingsForm.tax_rate.toString(),
+        vat_rate: settingsForm.vat_rate.toString(),
         currency: settingsForm.currency
       };
-      
+
       await axios.put('/api/settings', { settings: settingsToUpdate });
       toast.success('Settings saved successfully');
       fetchSettings(); // Refresh settings
@@ -275,7 +304,7 @@ const AdminDashboard = () => {
   const handleUserSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
       if (editingUser) {
         const updateData = { role: userForm.role };
@@ -288,7 +317,7 @@ const AdminDashboard = () => {
         await axios.post('/api/users', userForm);
         toast.success('User created successfully');
       }
-      
+
       setShowUserModal(false);
       fetchUsers();
     } catch (error) {
@@ -300,7 +329,7 @@ const AdminDashboard = () => {
 
   const handleDeleteUser = async (userId) => {
     if (!window.confirm('Are you sure you want to delete this user?')) return;
-    
+
     try {
       await axios.delete(`/api/users/${userId}`);
       toast.success('User deleted successfully');
@@ -310,12 +339,68 @@ const AdminDashboard = () => {
     }
   };
 
+  // Customer Management Functions
+  const openCustomerModal = (customer = null) => {
+    if (customer) {
+      setEditingCustomer(customer);
+      setCustomerForm({
+        name: customer.name || '',
+        phone: customer.phone || '',
+        email: customer.email || '',
+        address: customer.address || ''
+      });
+    } else {
+      setEditingCustomer(null);
+      setCustomerForm({
+        name: '',
+        phone: '',
+        email: '',
+        address: ''
+      });
+    }
+    setShowCustomerModal(true);
+  };
+
+  const handleCustomerSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      if (editingCustomer) {
+        await axios.put(`/api/customers/${editingCustomer.id}`, customerForm);
+        toast.success('Customer updated successfully');
+      } else {
+        await axios.post('/api/customers', customerForm);
+        toast.success('Customer created successfully');
+      }
+
+      setShowCustomerModal(false);
+      fetchCustomers();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to save customer');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteCustomer = async (customerId) => {
+    if (!window.confirm('Are you sure you want to delete this customer?')) return;
+
+    try {
+      await axios.delete(`/api/customers/${customerId}`);
+      toast.success('Customer deleted successfully');
+      fetchCustomers();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to delete customer');
+    }
+  };
+
   // Export Functions
   const exportToCSV = (data, filename) => {
-    const csvContent = "data:text/csv;charset=utf-8," 
+    const csvContent = "data:text/csv;charset=utf-8,"
       + Object.keys(data[0]).join(",") + "\n"
       + data.map(row => Object.values(row).join(",")).join("\n");
-    
+
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -364,7 +449,7 @@ const AdminDashboard = () => {
   const handleProductSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
       const productData = {
         ...productForm,
@@ -381,7 +466,7 @@ const AdminDashboard = () => {
         await axios.post('/api/products', productData);
         toast.success('Product created successfully');
       }
-      
+
       setShowProductModal(false);
       fetchProducts(productsPagination.page, productsPagination.limit);
     } catch (error) {
@@ -393,7 +478,7 @@ const AdminDashboard = () => {
 
   const handleDeleteProduct = async (productId) => {
     if (!window.confirm('Are you sure you want to delete this product?')) return;
-    
+
     try {
       await axios.delete(`/api/products/${productId}`);
       toast.success('Product deleted successfully');
@@ -403,9 +488,64 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchProductHistory = async (productId) => {
+    try {
+      setLoading(true);
+      const response = await axios.get(`/api/sales/product/${productId}`);
+      setProductHistory(response.data || []);
+      setShowHistoryModal(true);
+    } catch (error) {
+      toast.error('Failed to load product history');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateThemeColor = async (color) => {
+    try {
+      await axios.patch('/api/users/theme-color', { theme_color: color });
+      toast.success('Theme color updated');
+      // Update local state if needed or reload
+      window.location.reload();
+    } catch (error) {
+      toast.error('Failed to update theme color');
+    }
+  };
+
+  const handleBulkImport = async () => {
+    try {
+      setLoading(true);
+      let productsToImport = [];
+      try {
+        productsToImport = JSON.parse(importData);
+      } catch (e) {
+        toast.error('Invalid JSON format. Please provide a valid JSON array of products.');
+        setLoading(false);
+        return;
+      }
+
+      const response = await axios.post('/api/products/bulk', { products: productsToImport });
+      const { success, failed, errors } = response.data;
+
+      toast.success(`Import complete! ${success} succeeded, ${failed} failed.`);
+      if (failed > 0) {
+        console.error('Import errors:', errors);
+      }
+
+      setShowImportModal(false);
+      setImportData('');
+      fetchProducts();
+    } catch (error) {
+      toast.error('Import failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
   // Analytics Data Processing
   const getAnalyticsData = () => {
-    if (!salesHistory.length) return { dailySales: [], topProducts: [], lowStockProducts: [] };
+    if (!salesHistory.length) return { dailySales: [], topProducts: [], lowStockProducts: [], pendingOrders: [] };
 
     // Daily sales for the last 7 days
     const last7Days = [];
@@ -413,11 +553,11 @@ const AdminDashboard = () => {
       const date = new Date();
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split('T')[0];
-      
+
       const dayTotal = salesHistory
         .filter(sale => sale.created_at?.startsWith(dateStr))
         .reduce((sum, sale) => sum + parseFloat(sale.total_amount || sale.total || 0), 0);
-      
+
       last7Days.push({
         date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         sales: dayTotal
@@ -438,16 +578,19 @@ const AdminDashboard = () => {
     });
 
     const topProducts = Object.entries(productSales)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 5)
       .map(([name, quantity]) => ({ name, quantity }));
 
     // Low stock products
-    const lowStockProducts = products.filter(product => 
+    const lowStockProducts = products.filter(product =>
       product.stock <= (product.min_stock || 5)
     );
 
-    return { dailySales: last7Days, topProducts, lowStockProducts };
+    // Pending orders
+    const pendingOrders = salesHistory.filter(sale => sale.status === 'pending');
+
+    return { dailySales: last7Days, topProducts, lowStockProducts, pendingOrders };
   };
 
   const analytics = getAnalyticsData();
@@ -479,7 +622,7 @@ const AdminDashboard = () => {
                 required
                 disabled={editingUser}
                 value={userForm.username}
-                onChange={(e) => setUserForm({...userForm, username: e.target.value})}
+                onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
               />
             </div>
@@ -492,7 +635,7 @@ const AdminDashboard = () => {
                 type="password"
                 required={!editingUser}
                 value={userForm.password}
-                onChange={(e) => setUserForm({...userForm, password: e.target.value})}
+                onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
@@ -504,7 +647,7 @@ const AdminDashboard = () => {
               <select
                 required
                 value={userForm.role}
-                onChange={(e) => setUserForm({...userForm, role: e.target.value})}
+                onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="cashier">Cashier</option>
@@ -533,6 +676,71 @@ const AdminDashboard = () => {
         </div>
       </div>
     )
+  );
+
+  const renderCustomers = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-900">Customer Management</h2>
+        <button
+          onClick={() => openCustomerModal()}
+          className="btn btn-primary flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          Add Customer
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {customers.map(customer => (
+                <tr key={customer.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {customer.name}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {customer.phone || '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {customer.email || '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {customer.address || '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => openCustomerModal(customer)}
+                        className="text-blue-600 hover:text-blue-900"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCustomer(customer.id)}
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   );
 
   const renderUsers = () => (
@@ -566,9 +774,8 @@ const AdminDashboard = () => {
                     {user.username}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
-                    }`}>
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                      }`}>
                       {user.role}
                     </span>
                   </td>
@@ -648,7 +855,7 @@ const AdminDashboard = () => {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Performance</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Performance</h3>
           {reportData.product_performance && reportData.product_performance.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
@@ -659,7 +866,7 @@ const AdminDashboard = () => {
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="units_sold"
-                  label={({name, value}) => `${name}: ${value}`}
+                  label={({ name, value }) => `${name}: ${value}`}
                 >
                   {reportData.product_performance.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'][index % 5]} />
@@ -708,7 +915,7 @@ const AdminDashboard = () => {
             </tbody>
           </table>
         </div>
-        
+
         {/* Pagination Controls */}
         {salesPagination.pages > 1 && (
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
@@ -770,7 +977,7 @@ const AdminDashboard = () => {
             <input
               type="text"
               value={settingsForm.store_name}
-              onChange={(e) => setSettingsForm({...settingsForm, store_name: e.target.value})}
+              onChange={(e) => setSettingsForm({ ...settingsForm, store_name: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
@@ -781,7 +988,7 @@ const AdminDashboard = () => {
             <input
               type="text"
               value={settingsForm.store_address}
-              onChange={(e) => setSettingsForm({...settingsForm, store_address: e.target.value})}
+              onChange={(e) => setSettingsForm({ ...settingsForm, store_address: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
@@ -792,19 +999,19 @@ const AdminDashboard = () => {
             <input
               type="text"
               value={settingsForm.phone}
-              onChange={(e) => setSettingsForm({...settingsForm, phone: e.target.value})}
+              onChange={(e) => setSettingsForm({ ...settingsForm, phone: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tax Rate (%)
+              VAT Rate (%)
             </label>
             <input
               type="number"
               step="0.01"
-              value={settingsForm.tax_rate}
-              onChange={(e) => setSettingsForm({...settingsForm, tax_rate: e.target.value})}
+              value={settingsForm.vat_rate}
+              onChange={(e) => setSettingsForm({ ...settingsForm, vat_rate: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
@@ -814,7 +1021,7 @@ const AdminDashboard = () => {
             </label>
             <select
               value={settingsForm.currency}
-              onChange={(e) => setSettingsForm({...settingsForm, currency: e.target.value})}
+              onChange={(e) => setSettingsForm({ ...settingsForm, currency: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="PHP">PHP (₱)</option>
@@ -825,7 +1032,7 @@ const AdminDashboard = () => {
           </div>
         </div>
         <div className="mt-6">
-          <button 
+          <button
             onClick={handleSaveSettings}
             disabled={loading}
             className="btn btn-primary flex items-center gap-2"
@@ -833,6 +1040,27 @@ const AdminDashboard = () => {
             <Save className="w-4 h-4" />
             {loading ? 'Saving...' : 'Save Settings'}
           </button>
+        </div>
+      </div>
+
+      {/* Account Personalization */}
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Account Personalization</h3>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            Theme Color
+          </label>
+          <div className="flex flex-wrap gap-3">
+            {['#dc2626', '#2563eb', '#16a34a', '#9333ea', '#ea580c', '#0891b2', '#4b5563'].map(color => (
+              <button
+                key={color}
+                onClick={() => handleUpdateThemeColor(color)}
+                className={`w-10 h-10 rounded-full border-2 transition-all transform hover:scale-110 ${user?.theme_color === color ? 'border-gray-900 scale-110 shadow-lg' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                style={{ backgroundColor: color }}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-3">This color will be applied to your sidebar and buttons.</p>
         </div>
       </div>
 
@@ -887,10 +1115,8 @@ const AdminDashboard = () => {
               rows="3"
               placeholder="Enter custom message for receipt footer..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >Thank you for your business!
-Drive safely! 🚗
-Warranty: 30 days on parts
-Returns: 7 days with receipt</textarea>
+              defaultValue={`Thank you for your business!\nDrive safely! 🚗\nWarranty: 30 days on parts\nReturns: 7 days with receipt`}
+            />
           </div>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h4 className="font-semibold text-blue-900 mb-2">📋 Printer Setup Instructions:</h4>
@@ -916,7 +1142,7 @@ Returns: 7 days with receipt</textarea>
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Backup Management</h2>
-        <button 
+        <button
           onClick={handleCreateBackup}
           disabled={loading}
           className="btn btn-primary"
@@ -980,7 +1206,7 @@ Returns: 7 days with receipt</textarea>
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-gray-900 mb-6">{settings.company_name?.value || 'Go Tire Car Care Center'} Dashboard</h2>
-        
+
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-xl p-6 text-white transform hover:scale-105 transition-all duration-200">
@@ -1011,7 +1237,7 @@ Returns: 7 days with receipt</textarea>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-green-100 text-sm font-medium">Total Sales (7d)</p>
-                  <p className="text-4xl font-bold">
+                <p className="text-4xl font-bold">
                   {formatCurrency(analytics.dailySales.reduce((sum, day) => sum + day.sales, 0))}
                 </p>
               </div>
@@ -1024,15 +1250,55 @@ Returns: 7 days with receipt</textarea>
           <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl shadow-xl p-6 text-white transform hover:scale-105 transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-100 text-sm font-medium">Total Users</p>
-                <p className="text-4xl font-bold">{users.length}</p>
+                <p className="text-purple-100 text-sm font-medium">Pending Orders</p>
+                <p className="text-4xl font-bold">{analytics.pendingOrders.length}</p>
               </div>
               <div className="p-4 bg-white bg-opacity-20 rounded-xl backdrop-blur-sm">
-                <Users className="w-8 h-8" />
+                <History className="w-8 h-8" />
               </div>
             </div>
           </div>
         </div>
+
+        {/* Pending Orders List */}
+        {analytics.pendingOrders.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 mb-8">
+            <div className="flex items-center mb-6">
+              <div className="p-3 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl mr-4">
+                <AlertTriangle className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">Pending Orders (Down Payments)</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead>
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {analytics.pendingOrders.map(order => (
+                    <tr key={order.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#{order.id}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(order.created_at).toLocaleDateString()}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{formatCurrency(order.total_amount)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">{formatCurrency(order.amount_paid)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600">{formatCurrency(order.total_amount - order.amount_paid)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button className="text-blue-600 hover:text-blue-900">Verify Payment</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
@@ -1049,7 +1315,7 @@ Returns: 7 days with receipt</textarea>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="date" stroke="#64748b" />
                 <YAxis stroke="#64748b" />
-                <Tooltip 
+                <Tooltip
                   formatter={(value) => [formatCurrency(value), 'Sales']}
                   contentStyle={{
                     backgroundColor: 'white',
@@ -1076,7 +1342,7 @@ Returns: 7 days with receipt</textarea>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="name" stroke="#64748b" />
                 <YAxis stroke="#64748b" />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{
                     backgroundColor: 'white',
                     border: '1px solid #e2e8f0',
@@ -1087,8 +1353,8 @@ Returns: 7 days with receipt</textarea>
                 <Bar dataKey="quantity" fill="url(#colorGradient)" radius={[8, 8, 0, 0]} />
                 <defs>
                   <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#059669" stopOpacity={0.8}/>
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="#059669" stopOpacity={0.8} />
                   </linearGradient>
                 </defs>
               </BarChart>
@@ -1129,13 +1395,49 @@ Returns: 7 days with receipt</textarea>
           </div>
           <h2 className="text-3xl font-bold text-gray-900">Product Inventory Management</h2>
         </div>
-        <button
-          onClick={() => openProductModal()}
-          className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-6 py-3 rounded-xl font-semibold flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
-        >
-          <Plus className="w-5 h-5" />
-          Add Product
-        </button>
+        <div className="flex gap-4">
+          <select
+            className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+            value={categoryFilter}
+            onChange={(e) => {
+              setCategoryFilter(e.target.value);
+              fetchProducts(1, productsPagination.limit, '', e.target.value);
+            }}
+          >
+            <option value="">All Categories</option>
+            <option value="Passenger Tires">Passenger Tires</option>
+            <option value="Truck Tires">Truck Tires</option>
+            <option value="SUV Tires">SUV Tires</option>
+            <option value="Performance Tires">Performance Tires</option>
+            <option value="Oil & Fluids">Oil & Fluids</option>
+            <option value="Auto Parts">Auto Parts</option>
+            <option value="Brake Pads">Brake Pads</option>
+            <option value="Wheels">Wheels</option>
+          </select>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type="text"
+              placeholder="Search products..."
+              className="pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 min-w-80"
+              onChange={(e) => fetchProducts(1, productsPagination.limit, e.target.value)}
+            />
+          </div>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 font-medium whitespace-nowrap"
+          >
+            <Database className="w-4 h-4" />
+            Bulk Import
+          </button>
+          <button
+            onClick={() => openProductModal()}
+            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-6 py-3 rounded-xl font-semibold flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
+          >
+            <Plus className="w-5 h-5" />
+            Add Product
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
@@ -1182,9 +1484,8 @@ Returns: 7 days with receipt</textarea>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <span className={`text-sm font-bold ${
-                        product.stock <= (product.min_stock || 5) ? 'text-red-600' : 'text-gray-900'
-                      }`}>
+                      <span className={`text-sm font-bold ${product.stock <= (product.min_stock || 5) ? 'text-red-600' : 'text-gray-900'
+                        }`}>
                         {product.stock}
                       </span>
                       {product.stock <= (product.min_stock || 5) && (
@@ -1197,6 +1498,16 @@ Returns: 7 days with receipt</textarea>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-3">
+                      <button
+                        onClick={() => {
+                          setSelectedProductForHistory(product);
+                          fetchProductHistory(product.id);
+                        }}
+                        className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200"
+                        title="View History"
+                      >
+                        <History className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => openProductModal(product)}
                         className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200"
@@ -1216,7 +1527,7 @@ Returns: 7 days with receipt</textarea>
             </tbody>
           </table>
         </div>
-        
+
         {/* Pagination Controls */}
         {productsPagination.pages > 1 && (
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
@@ -1263,6 +1574,145 @@ Returns: 7 days with receipt</textarea>
   );
 
   // Product Modal Component
+  // Customer Modal Component
+  const CustomerModal = () => (
+    showCustomerModal && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+          <div className="flex items-center justify-between p-6 border-b">
+            <h3 className="text-lg font-semibold text-gray-900">
+              {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
+            </h3>
+            <button
+              onClick={() => setShowCustomerModal(false)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <form onSubmit={handleCustomerSubmit} className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Customer Name *
+              </label>
+              <input
+                type="text"
+                required
+                value={customerForm.name}
+                onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Phone Number
+              </label>
+              <input
+                type="text"
+                value={customerForm.phone}
+                onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                value={customerForm.email}
+                onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Address
+              </label>
+              <textarea
+                rows={2}
+                value={customerForm.address}
+                onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowCustomerModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                {loading ? 'Saving...' : (editingCustomer ? 'Update Customer' : 'Create Customer')}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )
+  );
+
+  // Product History Modal
+  const ProductHistoryModal = () => (
+    showHistoryModal && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4">
+          <div className="flex items-center justify-between p-6 border-b">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Product History</h3>
+              <p className="text-sm text-gray-500">{selectedProductForHistory?.name}</p>
+            </div>
+            <button
+              onClick={() => setShowHistoryModal(false)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="p-6 overflow-y-auto max-h-[60vh]">
+            {productHistory.length > 0 ? (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead>
+                  <tr>
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {productHistory.map((item, idx) => (
+                    <tr key={idx}>
+                      <td className="py-2 text-sm">{new Date(item.created_at).toLocaleDateString()}</td>
+                      <td className="py-2 text-sm">{item.customer_name || 'Walk-in'}</td>
+                      <td className="py-2 text-sm">{item.quantity}</td>
+                      <td className="py-2 text-sm">{formatCurrency(item.unit_price)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-center text-gray-500 py-8">No sales history found for this product.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  );
+
   const ProductModal = () => (
     showProductModal && (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1289,7 +1739,7 @@ Returns: 7 days with receipt</textarea>
                   type="text"
                   required
                   value={productForm.name}
-                  onChange={(e) => setProductForm({...productForm, name: e.target.value})}
+                  onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -1302,7 +1752,7 @@ Returns: 7 days with receipt</textarea>
                   type="text"
                   required
                   value={productForm.sku}
-                  onChange={(e) => setProductForm({...productForm, sku: e.target.value})}
+                  onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })}
                   placeholder="e.g., MIC-DEF-225-65-17"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
@@ -1315,7 +1765,7 @@ Returns: 7 days with receipt</textarea>
                 <input
                   type="text"
                   value={productForm.barcode}
-                  onChange={(e) => setProductForm({...productForm, barcode: e.target.value})}
+                  onChange={(e) => setProductForm({ ...productForm, barcode: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -1329,7 +1779,7 @@ Returns: 7 days with receipt</textarea>
                   step="0.01"
                   required
                   value={productForm.price}
-                  onChange={(e) => setProductForm({...productForm, price: e.target.value})}
+                  onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -1342,7 +1792,7 @@ Returns: 7 days with receipt</textarea>
                   type="number"
                   step="0.01"
                   value={productForm.cost}
-                  onChange={(e) => setProductForm({...productForm, cost: e.target.value})}
+                  onChange={(e) => setProductForm({ ...productForm, cost: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -1355,7 +1805,7 @@ Returns: 7 days with receipt</textarea>
                   type="number"
                   required
                   value={productForm.stock}
-                  onChange={(e) => setProductForm({...productForm, stock: e.target.value})}
+                  onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -1367,7 +1817,7 @@ Returns: 7 days with receipt</textarea>
                 <input
                   type="number"
                   value={productForm.min_stock}
-                  onChange={(e) => setProductForm({...productForm, min_stock: e.target.value})}
+                  onChange={(e) => setProductForm({ ...productForm, min_stock: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -1378,7 +1828,7 @@ Returns: 7 days with receipt</textarea>
                 </label>
                 <select
                   value={productForm.category}
-                  onChange={(e) => setProductForm({...productForm, category: e.target.value})}
+                  onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Select Category</option>
@@ -1404,7 +1854,7 @@ Returns: 7 days with receipt</textarea>
                 </label>
                 <select
                   value={productForm.brand}
-                  onChange={(e) => setProductForm({...productForm, brand: e.target.value})}
+                  onChange={(e) => setProductForm({ ...productForm, brand: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Select Brand</option>
@@ -1453,12 +1903,12 @@ Returns: 7 days with receipt</textarea>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Size/Type (e.g., 225/65R17, 5W-30, 17x8)
+                  Tire Size / Type
                 </label>
                 <input
                   type="text"
                   value={productForm.tire_size}
-                  onChange={(e) => setProductForm({...productForm, tire_size: e.target.value})}
+                  onChange={(e) => setProductForm({ ...productForm, tire_size: e.target.value })}
                   placeholder="225/65R17, 5W-30, 17x8, etc."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
@@ -1472,7 +1922,7 @@ Returns: 7 days with receipt</textarea>
               <textarea
                 rows={3}
                 value={productForm.description}
-                onChange={(e) => setProductForm({...productForm, description: e.target.value})}
+                onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
@@ -1500,9 +1950,64 @@ Returns: 7 days with receipt</textarea>
     )
   );
 
+  const ImportModal = () => (
+    showImportModal && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4">
+          <div className="flex items-center justify-between p-6 border-b">
+            <h3 className="text-lg font-semibold text-gray-900">Bulk Product Import</h3>
+            <button
+              onClick={() => setShowImportModal(false)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+              <p className="font-bold mb-1">Format Requirement:</p>
+              <p>Please provide a JSON array of products. Example:</p>
+              <pre className="mt-2 text-xs overflow-x-auto bg-white p-2 border rounded">
+                {"[\n  {\n    \"name\": \"Sample Tire\",\n    \"sku\": \"TIRE-001\",\n    \"price\": 1500,\n    \"cost\": 1000,\n    \"stock\": 10,\n    \"category\": \"Passenger Tires\",\n    \"brand\": \"Michelin\",\n    \"tire_size\": \"225/65/17\"\n  }\n]"}
+              </pre>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                JSON Data
+              </label>
+              <textarea
+                value={importData}
+                onChange={(e) => setImportData(e.target.value)}
+                placeholder="Paste JSON array here..."
+                rows="10"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end p-6 border-t gap-3">
+            <button
+              onClick={() => setShowImportModal(false)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleBulkImport}
+              disabled={loading || !importData.trim()}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loading ? 'Importing...' : 'Start Import'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
   const sidebarItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'products', label: 'Products', icon: Package },
+    { id: 'customers', label: 'Customers', icon: Users },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings },
@@ -1525,14 +2030,14 @@ Returns: 7 days with receipt</textarea>
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
       {/* Sidebar */}
-      <div className="w-72 bg-gradient-to-b from-gray-900 to-gray-800 shadow-2xl border-r border-gray-700">
+      <div className="w-72 flex-shrink-0 bg-gradient-to-b from-gray-900 to-gray-800 shadow-2xl border-r border-gray-700 sticky top-0 h-screen flex flex-col">
         <div className="p-8">
           <div className="bg-gradient-to-r from-red-600 to-red-700 rounded-2xl p-6 text-white">
             <h1 className="text-2xl font-bold mb-2">{settings.company_name?.value || 'Go Tire Car Care Center'} Admin</h1>
             <p className="text-red-100 text-sm">Welcome back, {user?.username}</p>
           </div>
         </div>
-        
+
         <nav className="px-6">
           {sidebarItems.map(item => {
             const Icon = item.icon;
@@ -1540,11 +2045,11 @@ Returns: 7 days with receipt</textarea>
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center px-6 py-4 text-left text-sm font-medium transition-all duration-200 rounded-xl mb-2 ${
-                  activeTab === item.id
-                    ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-lg transform scale-105'
-                    : 'text-gray-300 hover:bg-gray-700 hover:text-white hover:transform hover:scale-105'
-                }`}
+                className={`w-full flex items-center px-6 py-4 text-left text-sm font-medium transition-all duration-200 rounded-xl mb-2 ${activeTab === item.id
+                  ? 'text-white shadow-lg transform scale-105'
+                  : 'text-gray-300 hover:bg-gray-700 hover:text-white hover:transform hover:scale-105'
+                  }`}
+                style={activeTab === item.id ? { backgroundColor: user?.theme_color || '#dc2626' } : {}}
               >
                 <Icon className="w-6 h-6 mr-4" />
                 {item.label}
@@ -1553,7 +2058,7 @@ Returns: 7 days with receipt</textarea>
           })}
         </nav>
 
-        <div className="absolute bottom-0 w-72 p-6 border-t border-gray-700">
+        <div className="mt-auto p-6 border-t border-gray-700">
           <button
             onClick={logout}
             className="w-full flex items-center px-6 py-4 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-xl transition-all duration-200"
@@ -1569,6 +2074,7 @@ Returns: 7 days with receipt</textarea>
         <div className="p-8">
           {activeTab === 'dashboard' && renderDashboard()}
           {activeTab === 'products' && renderProducts()}
+          {activeTab === 'customers' && renderCustomers()}
           {activeTab === 'users' && renderUsers()}
           {activeTab === 'reports' && renderReports()}
           {activeTab === 'settings' && renderSettings()}
@@ -1579,6 +2085,9 @@ Returns: 7 days with receipt</textarea>
       {/* Modals */}
       <ProductModal />
       <UserModal />
+      <CustomerModal />
+      <ProductHistoryModal />
+      <ImportModal />
     </div>
   );
 };

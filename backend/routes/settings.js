@@ -9,7 +9,7 @@ router.get('/', authenticateToken, async (req, res) => {
     try {
         const db = new Database();
         const settings = await db.query('SELECT * FROM settings ORDER BY key');
-        
+
         // Convert to key-value object for easier frontend use
         const settingsObj = {};
         settings.forEach(setting => {
@@ -50,6 +50,7 @@ router.put('/', authenticateToken, requireAdmin, async (req, res) => {
         const updatedSettings = await db.query('SELECT * FROM settings ORDER BY key');
         const settingsObj = {};
         updatedSettings.forEach(setting => {
+            // Handle legacy tax_rate key if needed, or just return as is
             settingsObj[setting.key] = {
                 value: setting.value,
                 description: setting.description,
@@ -69,9 +70,9 @@ router.get('/:key', authenticateToken, async (req, res) => {
     try {
         const { key } = req.params;
         const db = new Database();
-        
+
         const setting = await db.get('SELECT * FROM settings WHERE key = ?', [key]);
-        
+
         if (!setting) {
             return res.status(404).json({ error: 'Setting not found' });
         }

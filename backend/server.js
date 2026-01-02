@@ -11,6 +11,7 @@ const salesRoutes = require('./routes/sales');
 const userRoutes = require('./routes/users');
 const settingsRoutes = require('./routes/settings');
 const backupRoutes = require('./routes/backup');
+const customerRoutes = require('./routes/customers');
 
 // Import middleware
 const { authenticateToken } = require('./middleware/auth');
@@ -33,11 +34,12 @@ app.use('/api/sales', salesRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/backup', backupRoutes);
+app.use('/api/customers', customerRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'OK', 
+    res.json({
+        status: 'OK',
         timestamp: new Date().toISOString(),
         version: '1.0.0'
     });
@@ -48,7 +50,7 @@ app.get('/api/system/info', authenticateToken, async (req, res) => {
     try {
         const Database = require('./database/db');
         const db = new Database();
-        
+
         // Get database statistics
         const productCount = await db.get('SELECT COUNT(*) as count FROM products');
         const userCount = await db.get('SELECT COUNT(*) as count FROM users');
@@ -83,7 +85,7 @@ app.get('/api/system/info', authenticateToken, async (req, res) => {
 if (process.env.NODE_ENV === 'production') {
     // Serve static files from frontend build (for production)
     app.use(express.static(path.join(__dirname, '../frontend/build')));
-    
+
     // Catch all handler for React app (for production)
     app.get('*', (req, res) => {
         res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
@@ -101,7 +103,7 @@ async function startServer() {
     try {
         console.log('Initializing database...');
         await initializeDatabase();
-        
+
         app.listen(PORT, () => {
             console.log(`🚀 POS Server running on port ${PORT}`);
             console.log(`📊 API endpoints available at http://localhost:${PORT}/api`);

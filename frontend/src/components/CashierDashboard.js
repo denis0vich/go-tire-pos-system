@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import axios from 'axios';
-import { 
-  ShoppingCart, 
-  Scan, 
-  Plus, 
-  Minus, 
-  Trash2, 
-  CreditCard, 
+import {
+  ShoppingCart,
+  Scan,
+  Plus,
+  Minus,
+  Trash2,
+  CreditCard,
   DollarSign,
   Receipt,
   LogOut,
@@ -29,6 +29,7 @@ const CashierDashboard = () => {
   const [showReceipt, setShowReceipt] = useState(false);
   const [lastSale, setLastSale] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [themeColor, setThemeColor] = useState(user?.theme_color || '#dc2626');
   const [salesHistory, setSalesHistory] = useState([]);
   const [salesPagination, setSalesPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
   const [showProductSearch, setShowProductSearch] = useState(false);
@@ -40,6 +41,24 @@ const CashierDashboard = () => {
   const [manualPrice, setManualPrice] = useState('');
   const [settings, setSettings] = useState({});
   const barcodeInputRef = useRef(null);
+  const [selectedProductForHistory, setSelectedProductForHistory] = useState(null);
+  const [customers, setCustomers] = useState([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [isPartialPayment, setIsPartialPayment] = useState(false);
+  const [amountPaid, setAmountPaid] = useState('');
+
+  // Currency formatting helper
+  const formatCurrency = (amount) => {
+    const currency = settings.currency?.value || 'PHP';
+    const symbols = {
+      'PHP': '₱',
+      'USD': '$',
+      'EUR': '€',
+      'GBP': '£'
+    };
+    const symbol = symbols[currency] || '₱';
+    return `${symbol}${parseFloat(amount || 0).toFixed(2)}`;
+  };
 
   // Admin override barcode (secret)
   const ADMIN_OVERRIDE_BARCODE = 'ADMIN_OVERRIDE_2024';
@@ -84,9 +103,19 @@ const CashierDashboard = () => {
     }
   };
 
+  const fetchCustomers = async () => {
+    try {
+      const response = await axios.get('/api/customers');
+      setCustomers(response.data || []);
+    } catch (error) {
+      console.error('Failed to load customers');
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
     fetchSettings();
+    fetchCustomers();
     // Focus barcode input on component mount
     if (barcodeInputRef.current) {
       barcodeInputRef.current.focus();
@@ -118,6 +147,19 @@ const CashierDashboard = () => {
     }
   };
 
+  const fetchProductHistory = async (productId) => {
+    try {
+      setLoading(true);
+      const response = await axios.get(`/api/sales/product/${productId}`);
+      setProductHistory(response.data || []);
+      setShowHistoryModal(true);
+    } catch (error) {
+      toast.error('Failed to load product history');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleBarcodeSubmit = async (e) => {
     e.preventDefault();
     if (!barcode.trim()) return;
@@ -140,7 +182,7 @@ const CashierDashboard = () => {
     try {
       const response = await axios.get(`/api/products/barcode/${barcode}`);
       const product = response.data;
-      
+
       if (product.stock <= 0) {
         toast.error('Product is out of stock');
         return;
@@ -148,7 +190,7 @@ const CashierDashboard = () => {
 
       addToCart(product);
       setBarcode('');
-      
+
       // Refocus barcode input
       if (barcodeInputRef.current) {
         barcodeInputRef.current.focus();
@@ -165,11 +207,11 @@ const CashierDashboard = () => {
 
   const addToCart = (product, customPrice = null) => {
     const existingItem = cart.find(item => item.id === product.id);
-    
+
     // Apply custom price if admin override is active
     const finalPrice = customPrice || (adminOverride && manualPrice ? parseFloat(manualPrice) : product.price);
     const productWithPrice = { ...product, price: finalPrice };
-    
+
     if (existingItem) {
       if (existingItem.quantity >= product.stock) {
         toast.error('Cannot add more items than available in stock');
@@ -183,13 +225,13 @@ const CashierDashboard = () => {
     } else {
       setCart([...cart, { ...productWithPrice, quantity: 1 }]);
     }
-    
+
     if (adminOverride && (customPrice || manualPrice)) {
       toast.success(`Added ${product.name} with override price $${finalPrice}`);
     } else {
       toast.success(`Added ${product.name} to cart`);
     }
-    
+
     // Reset manual price after adding
     setManualPrice('');
   };
@@ -225,13 +267,15 @@ const CashierDashboard = () => {
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     const discountAmount = adminOverride ? (subtotal * (overrideDiscount / 100)) : 0;
     const afterDiscount = subtotal - discountAmount;
-    const taxRate = 0.1; // 10% tax - should come from settings
-    const tax = afterDiscount * taxRate;
+    const vatRate = parseFloat(settings.vat_rate?.value || settings.tax_rate?.value || 12) / 100;
+    const vat = afterDiscount * vatRate;
+    const total = afterDiscount + vat;
     return {
       subtotal: subtotal.toFixed(2),
       discount: discountAmount.toFixed(2),
-      tax: tax.toFixed(2),
-      total: (afterDiscount + tax).toFixed(2)
+      vat: vat.toFixed(2),
+      total: total.toFixed(2),
+      vatRate: (vatRate * 100).toFixed(1)
     };
   };
 
@@ -259,19 +303,24 @@ const CashierDashboard = () => {
         })),
         payment_method: paymentMethod,
         payment_received: paymentAmount,
-        discount_amount: 0
+        discount_amount: parseFloat(totals.discount),
+        customer_id: selectedCustomerId || null,
+        amount_paid: isPartialPayment ? parseFloat(amountPaid) : parseFloat(totals.total)
       };
 
       const response = await axios.post('/api/sales', saleData);
-      
+
       setLastSale(response.data);
       setShowReceipt(true);
       setShowCheckout(false);
       clearCart();
       setPaymentReceived('');
-      
+      setAmountPaid('');
+      setIsPartialPayment(false);
+      setSelectedCustomerId('');
+
       toast.success('Sale completed successfully!');
-      
+
       // Refresh products to update stock
       fetchProducts();
     } catch (error) {
@@ -287,7 +336,7 @@ const CashierDashboard = () => {
 
     // Create a new window for printing
     const printWindow = window.open('', '_blank', 'width=400,height=600');
-    
+
     // Generate thermal printer formatted HTML
     const thermalHTML = `
       <!DOCTYPE html>
@@ -401,24 +450,24 @@ const CashierDashboard = () => {
         <div class="totals">
           <div class="total-line">
             <span>Subtotal:</span>
-            <span>$${parseFloat(lastSale.receipt_data.subtotal).toFixed(2)}</span>
+            <span>${formatCurrency(lastSale.receipt_data.subtotal)}</span>
           </div>
           <div class="total-line">
-            <span>Tax (8.5%):</span>
-            <span>$${parseFloat(lastSale.receipt_data.tax_amount).toFixed(2)}</span>
+            <span>VAT (${settings.vat_rate?.value || settings.tax_rate?.value || 12}%):</span>
+            <span>${formatCurrency(lastSale.receipt_data.tax_amount)}</span>
           </div>
           <div class="separator">================================</div>
           <div class="total-line final">
             <span>TOTAL:</span>
-            <span>$${parseFloat(lastSale.receipt_data.total_amount).toFixed(2)}</span>
+            <span>${formatCurrency(lastSale.receipt_data.total_amount)}</span>
           </div>
           <div class="total-line">
             <span>Payment (${lastSale.sale.payment_method.toUpperCase()}):</span>
-            <span>$${parseFloat(lastSale.receipt_data.payment_received || lastSale.receipt_data.total_amount).toFixed(2)}</span>
+            <span>${formatCurrency(lastSale.receipt_data.payment_received || lastSale.receipt_data.total_amount)}</span>
           </div>
           <div class="total-line">
             <span>Change:</span>
-            <span>$${parseFloat(lastSale.receipt_data.change_given || 0).toFixed(2)}</span>
+            <span>${formatCurrency(lastSale.receipt_data.change_given || 0)}</span>
           </div>
         </div>
 
@@ -438,7 +487,7 @@ const CashierDashboard = () => {
 
     printWindow.document.write(thermalHTML);
     printWindow.document.close();
-    
+
     // Wait for content to load, then print
     printWindow.onload = () => {
       printWindow.focus();
@@ -448,662 +497,792 @@ const CashierDashboard = () => {
   };
 
   // Use search results if available, otherwise fall back to client-side filtering
-  const filteredProducts = searchTerm && showProductSearch && searchResults.length > 0 
-    ? searchResults 
+  const filteredProducts = searchTerm && showProductSearch && searchResults.length > 0
+    ? searchResults
     : products.filter(product =>
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.barcode?.includes(searchTerm) ||
-        product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.tire_size?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.barcode?.includes(searchTerm) ||
+      product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.tire_size?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   const totals = calculateTotal();
 
   return (
     <>
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{settings?.company_name?.value || 'Go Tire Car Care Center'} POS</h1>
-              <p className="text-sm text-gray-500">Welcome, {user?.username}</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button onClick={logout} className="btn btn-secondary">
-                <LogOut className="w-4 h-4" />
-                Logout
-              </button>
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white shadow-sm border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center py-4">
+              <div>
+                <div style={{ backgroundColor: user?.theme_color || '#dc2626' }} className="p-4 rounded-xl text-white">
+                  <h1 className="text-2xl font-bold">{settings?.company_name?.value || 'Go Tire Car Care Center'} POS</h1>
+                  <p className="text-sm opacity-90">Welcome, {user?.username}</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-4">
+                <button onClick={logout} className="btn btn-secondary">
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <div className="pos-layout">
-        {/* Main Scanning Section */}
-        <div className="pos-main-section">
-          {/* Primary Barcode Scanner */}
-          <div className="pos-scanner-card">
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold mb-2">🔍 Product Scanner</h2>
-              <p className="text-lg opacity-90">Scan product barcode or search manually</p>
-            </div>
-            
-            <form onSubmit={handleBarcodeSubmit} className="space-y-6">
-              <div className="barcode-input">
-                <Scan className="absolute left-4 top-1/2 transform -translate-y-1/2 text-white opacity-80 w-5 h-5" />
-                <input
-                  ref={barcodeInputRef}
-                  type="text"
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="Scan product barcode or enter manually..."
-                  className="pos-scanner-input"
-                />
+        <div className="pos-layout">
+          {/* Main Scanning Section */}
+          <div className="pos-main-section">
+            {/* Primary Barcode Scanner */}
+            <div className="pos-scanner-card">
+              <div className="text-center mb-6">
+                <h2 className="text-2xl font-bold mb-2">🔍 Product Scanner</h2>
+                <p className="text-lg opacity-90">Scan product barcode or search manually</p>
               </div>
-              
-              <button type="submit" className="pos-action-btn w-full bg-white text-purple-700 font-semibold text-lg min-h-16">
-                <Plus className="w-6 h-6" />
-                Add to Cart
+
+              <form onSubmit={handleBarcodeSubmit} className="space-y-6">
+                <div className="barcode-input">
+                  <Scan className="absolute left-4 top-1/2 transform -translate-y-1/2 text-white opacity-80 w-5 h-5" />
+                  <input
+                    ref={barcodeInputRef}
+                    type="text"
+                    value={barcode}
+                    onChange={(e) => setBarcode(e.target.value)}
+                    placeholder="Scan product barcode or enter manually..."
+                    className="pos-scanner-input"
+                  />
+                </div>
+
+                <button type="submit" className="pos-action-btn w-full bg-white text-purple-700 font-semibold text-lg min-h-16">
+                  <Plus className="w-6 h-6" />
+                  Add to Cart
+                </button>
+              </form>
+
+              {adminOverride && (
+                <div className="pos-override-panel">
+                  <h4 className="font-bold text-orange-800 mb-3 flex items-center gap-2">
+                    🔓 Admin Override Active
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-orange-800 mb-1">Custom Price</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={manualPrice}
+                        onChange={(e) => setManualPrice(e.target.value)}
+                        placeholder="Enter price"
+                        className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-orange-800 mb-1">Discount %</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={overrideDiscount}
+                        onChange={(e) => setOverrideDiscount(parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                        className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setAdminOverride(false);
+                      setOverrideDiscount(0);
+                      setManualPrice('');
+                    }}
+                    className="mt-3 px-4 py-2 bg-white border border-orange-300 rounded-lg text-orange-800 font-medium hover:bg-orange-50 transition-colors"
+                  >
+                    Disable Override
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Actions Grid */}
+            <div className="pos-action-grid">
+              <button
+                onClick={() => setShowProductSearch(true)}
+                className="pos-action-btn"
+              >
+                <Search className="w-8 h-8 text-blue-500" />
+                <span className="font-semibold text-gray-700">Search Products</span>
               </button>
-            </form>
-            
-            {adminOverride && (
-              <div className="pos-override-panel">
-                <h4 className="font-bold text-orange-800 mb-3 flex items-center gap-2">
-                  🔓 Admin Override Active
-                </h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-orange-800 mb-1">Custom Price</label>
+
+              <button
+                onClick={() => {
+                  setShowHistory(true);
+                  fetchSalesHistory();
+                }}
+                className="pos-action-btn"
+              >
+                <History className="w-8 h-8 text-green-500" />
+                <span className="font-semibold text-gray-700">Sales History</span>
+              </button>
+
+              <button
+                onClick={clearCart}
+                className="pos-action-btn"
+                disabled={cart.length === 0}
+              >
+                <Trash2 className="w-8 h-8 text-red-500" />
+                <span className="font-semibold text-gray-700">Clear Cart</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (barcodeInputRef.current) {
+                    barcodeInputRef.current.focus();
+                  }
+                }}
+                className="pos-action-btn"
+              >
+                <Scan className="w-8 h-8 text-purple-500" />
+                <span className="font-semibold text-gray-700">Focus Scanner</span>
+              </button>
+            </div>
+
+            {/* Instructions */}
+            <div className="pos-instructions">
+              <h4 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                💡 Quick Guide
+              </h4>
+              <div className="grid grid-cols-2 gap-4 text-sm text-gray-700">
+                <div>
+                  <p className="font-medium mb-1">🔍 Product Scanning:</p>
+                  <p>Use barcode scanner or type manually</p>
+                </div>
+                <div>
+                  <p className="font-medium mb-1">🔍 Product Search:</p>
+                  <p>Find products when barcode fails</p>
+                </div>
+                <div>
+                  <p className="font-medium mb-1">🔓 Admin Override:</p>
+                  <p>Admin barcode: ADMIN_OVERRIDE_2024</p>
+                </div>
+                <div>
+                  <p className="font-medium mb-1">⚡ Quick Entry:</p>
+                  <p>Scanner stays focused for rapid entry</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Cart Panel */}
+          <div className="cart-panel">
+            <div className="cart-header">
+              <h3 className="cart-title">
+                <ShoppingCart className="w-6 h-6" />
+                Shopping Cart ({cart.length})
+              </h3>
+            </div>
+
+            <div className="cart-items">
+              {cart.length === 0 ? (
+                <div className="text-center py-12">
+                  <ShoppingCart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500 text-lg">Shopping cart is empty</p>
+                  <p className="text-gray-400 text-sm">Scan products to get started</p>
+                </div>
+              ) : (
+                cart.map(item => (
+                  <div key={item.id} className="cart-item">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-800">{item.name}</h4>
+                      <p className="text-sm text-gray-500">${item.price} each</p>
+                    </div>
+                    <div className="cart-item-controls">
+                      <button
+                        onClick={() => updateCartQuantity(item.id, item.quantity - 1)}
+                        className="cart-btn"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <span className="w-8 text-center font-semibold text-lg">{item.quantity}</span>
+                      <button
+                        onClick={() => updateCartQuantity(item.id, item.quantity + 1)}
+                        className="cart-btn"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => removeFromCart(item.id)}
+                        className="cart-btn danger"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-lg text-gray-800">{formatCurrency(item.price * item.quantity)}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {cart.length > 0 && (
+              <>
+                <div className="cart-summary">
+                  <div className="flex justify-between mb-3 text-lg">
+                    <span className="font-medium">Subtotal:</span>
+                    <span className="font-semibold">{formatCurrency(totals.subtotal)}</span>
+                  </div>
+                  {adminOverride && parseFloat(totals.discount) > 0 && (
+                    <div className="flex justify-between mb-3 text-lg text-orange-600">
+                      <span className="font-medium">Discount ({overrideDiscount}%):</span>
+                      <span className="font-semibold">-{formatCurrency(totals.discount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between mb-3 text-lg">
+                    <span className="font-medium">VAT ({settings.vat_rate?.value || settings.tax_rate?.value || 12}%):</span>
+                    <span className="font-semibold">{formatCurrency(totals.vat)}</span>
+                  </div>
+                  <div className="flex justify-between cart-total">
+                    <span className="text-xl font-bold">Total:</span>
+                    <span className="text-2xl font-bold">{formatCurrency(totals.total)}</span>
+                  </div>
+                  {adminOverride && (
+                    <div className="text-center mt-3 px-3 py-2 bg-yellow-100 rounded-lg">
+                      <span className="text-sm font-medium text-yellow-800">🔓 Admin Override Active</span>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setShowCheckout(true)}
+                  className="checkout-btn"
+                >
+                  <CreditCard className="w-5 h-5" />
+                  Checkout Now
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Checkout Modal */}
+        {showCheckout && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h3 className="modal-title">Checkout</h3>
+                <button
+                  onClick={() => setShowCheckout(false)}
+                  className="modal-close"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-medium mb-2">Order Summary</h4>
+                  <div className="bg-gray-50 p-3 rounded">
+                    {cart.map(item => (
+                      <div key={item.id} className="flex justify-between text-sm">
+                        <span>{item.name} x{item.quantity}</span>
+                        <span>${(item.price * item.quantity).toFixed(2)}</span>
+                      </div>
+                    ))}
+                    <div className="border-t pt-2 mt-2 font-medium">
+                      <div className="flex justify-between">
+                        <span>Total:</span>
+                        <span>${totals.total}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Payment Method</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="form-select"
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="digital">Digital Payment</option>
+                  </select>
+                </div>
+
+                {paymentMethod === 'cash' && (
+                  <div className="form-group">
+                    <label className="form-label">Amount Received</label>
                     <input
                       type="number"
                       step="0.01"
-                      value={manualPrice}
-                      onChange={(e) => setManualPrice(e.target.value)}
-                      placeholder="Enter price"
-                      className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      value={paymentReceived}
+                      onChange={(e) => setPaymentReceived(e.target.value)}
+                      placeholder="Enter amount received"
+                      className="form-input"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-orange-800 mb-1">Discount %</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={overrideDiscount}
-                      onChange={(e) => setOverrideDiscount(parseFloat(e.target.value) || 0)}
-                      placeholder="0"
-                      className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    />
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setAdminOverride(false);
-                    setOverrideDiscount(0);
-                    setManualPrice('');
-                  }}
-                  className="mt-3 px-4 py-2 bg-white border border-orange-300 rounded-lg text-orange-800 font-medium hover:bg-orange-50 transition-colors"
-                >
-                  Disable Override
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Actions Grid */}
-          <div className="pos-action-grid">
-            <button
-              onClick={() => setShowProductSearch(true)}
-              className="pos-action-btn"
-            >
-              <Search className="w-8 h-8 text-blue-500" />
-              <span className="font-semibold text-gray-700">Search Products</span>
-            </button>
-            
-            <button
-              onClick={() => {
-                setShowHistory(true);
-                fetchSalesHistory();
-              }}
-              className="pos-action-btn"
-            >
-              <History className="w-8 h-8 text-green-500" />
-              <span className="font-semibold text-gray-700">Sales History</span>
-            </button>
-            
-            <button
-              onClick={clearCart}
-              className="pos-action-btn"
-              disabled={cart.length === 0}
-            >
-              <Trash2 className="w-8 h-8 text-red-500" />
-              <span className="font-semibold text-gray-700">Clear Cart</span>
-            </button>
-            
-            <button
-              onClick={() => {
-                if (barcodeInputRef.current) {
-                  barcodeInputRef.current.focus();
-                }
-              }}
-              className="pos-action-btn"
-            >
-              <Scan className="w-8 h-8 text-purple-500" />
-              <span className="font-semibold text-gray-700">Focus Scanner</span>
-            </button>
-          </div>
-
-          {/* Instructions */}
-          <div className="pos-instructions">
-            <h4 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-              💡 Quick Guide
-            </h4>
-            <div className="grid grid-cols-2 gap-4 text-sm text-gray-700">
-              <div>
-                <p className="font-medium mb-1">🔍 Product Scanning:</p>
-                <p>Use barcode scanner or type manually</p>
-              </div>
-              <div>
-                <p className="font-medium mb-1">🔍 Product Search:</p>
-                <p>Find products when barcode fails</p>
-              </div>
-              <div>
-                <p className="font-medium mb-1">🔓 Admin Override:</p>
-                <p>Admin barcode: ADMIN_OVERRIDE_2024</p>
-              </div>
-              <div>
-                <p className="font-medium mb-1">⚡ Quick Entry:</p>
-                <p>Scanner stays focused for rapid entry</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Cart Panel */}
-        <div className="cart-panel">
-          <div className="cart-header">
-            <h3 className="cart-title">
-              <ShoppingCart className="w-6 h-6" />
-              Shopping Cart ({cart.length})
-            </h3>
-          </div>
-
-          <div className="cart-items">
-            {cart.length === 0 ? (
-              <div className="text-center py-12">
-                <ShoppingCart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500 text-lg">Shopping cart is empty</p>
-                <p className="text-gray-400 text-sm">Scan products to get started</p>
-              </div>
-            ) : (
-              cart.map(item => (
-                <div key={item.id} className="cart-item">
-                  <div className="flex-1">
-                    <h4 className="font-semibold text-gray-800">{item.name}</h4>
-                    <p className="text-sm text-gray-500">${item.price} each</p>
-                  </div>
-                  <div className="cart-item-controls">
-                    <button
-                      onClick={() => updateCartQuantity(item.id, item.quantity - 1)}
-                      className="cart-btn"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <span className="w-8 text-center font-semibold text-lg">{item.quantity}</span>
-                    <button
-                      onClick={() => updateCartQuantity(item.id, item.quantity + 1)}
-                      className="cart-btn"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => removeFromCart(item.id)}
-                      className="cart-btn danger"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-lg text-gray-800">${(item.price * item.quantity).toFixed(2)}</p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {cart.length > 0 && (
-            <>
-              <div className="cart-summary">
-                <div className="flex justify-between mb-3 text-lg">
-                  <span className="font-medium">Subtotal:</span>
-                  <span className="font-semibold">${totals.subtotal}</span>
-                </div>
-                {adminOverride && parseFloat(totals.discount) > 0 && (
-                  <div className="flex justify-between mb-3 text-lg text-orange-600">
-                    <span className="font-medium">Discount ({overrideDiscount}%):</span>
-                    <span className="font-semibold">-${totals.discount}</span>
-                  </div>
-                )}
-                <div className="flex justify-between mb-3 text-lg">
-                  <span className="font-medium">Tax (10%):</span>
-                  <span className="font-semibold">${totals.tax}</span>
-                </div>
-                <div className="flex justify-between cart-total">
-                  <span className="text-xl font-bold">Total:</span>
-                  <span className="text-2xl font-bold">${totals.total}</span>
-                </div>
-                {adminOverride && (
-                  <div className="text-center mt-3 px-3 py-2 bg-yellow-100 rounded-lg">
-                    <span className="text-sm font-medium text-yellow-800">🔓 Admin Override Active</span>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => setShowCheckout(true)}
-                className="checkout-btn"
-              >
-                <CreditCard className="w-5 h-5" />
-                Checkout Now
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Checkout Modal */}
-      {showCheckout && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 className="modal-title">Checkout</h3>
-              <button
-                onClick={() => setShowCheckout(false)}
-                className="modal-close"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <h4 className="font-medium mb-2">Order Summary</h4>
-                <div className="bg-gray-50 p-3 rounded">
-                  {cart.map(item => (
-                    <div key={item.id} className="flex justify-between text-sm">
-                      <span>{item.name} x{item.quantity}</span>
-                      <span>${(item.price * item.quantity).toFixed(2)}</span>
-                    </div>
-                  ))}
-                  <div className="border-t pt-2 mt-2 font-medium">
-                    <div className="flex justify-between">
-                      <span>Total:</span>
-                      <span>${totals.total}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Payment Method</label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="form-select"
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                  <option value="digital">Digital Payment</option>
-                </select>
-              </div>
-
-              {paymentMethod === 'cash' && (
-                <div className="form-group">
-                  <label className="form-label">Amount Received</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={paymentReceived}
-                    onChange={(e) => setPaymentReceived(e.target.value)}
-                    placeholder="Enter amount received"
-                    className="form-input"
-                  />
-                  {paymentReceived && (
                     <p className="text-sm text-gray-600 mt-1">
-                      Change: ${Math.max(0, parseFloat(paymentReceived) - parseFloat(totals.total)).toFixed(2)}
+                      Change: {formatCurrency(Math.max(0, parseFloat(paymentReceived) - parseFloat(totals.total)))}
                     </p>
-                  )}
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowCheckout(false)}
-                  className="btn btn-outline flex-1"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCheckout}
-                  disabled={loading}
-                  className="btn btn-success flex-1"
-                >
-                  {loading ? (
-                    <>
-                      <div className="spinner"></div>
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <DollarSign className="w-4 h-4" />
-                      Complete Sale
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Receipt Modal */}
-      {showReceipt && lastSale && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 className="modal-title">Receipt</h3>
-              <button
-                onClick={() => setShowReceipt(false)}
-                className="modal-close"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="receipt">
-              <div className="receipt-header">
-                <h3>Go Tire Car Care Center</h3>
-                <p>B2 L18-B Camarin Road, Camarin Rd, Caloocan, 1400 Metro Manila</p>
-                <p>================================</p>
-                <p>Sale ID: #{lastSale.sale.id}</p>
-                <p>Date: {new Date(lastSale.sale.created_at).toLocaleDateString()}</p>
-                <p>Time: {new Date(lastSale.sale.created_at).toLocaleTimeString()}</p>
-                <p>Cashier: {lastSale.sale.cashier_name}</p>
-                <p>================================</p>
-              </div>
-
-              <div className="receipt-items">
-                {lastSale.items.map(item => (
-                  <div key={item.id} className="receipt-item">
-                    <div style={{ flex: 1 }}>
-                      <div className="product-name">{item.product_name}</div>
-                      <div className="product-details">
-                        Qty: {item.quantity} @ ${parseFloat(item.unit_price).toFixed(2)}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                      ${parseFloat(item.total_price).toFixed(2)}
-                    </div>
                   </div>
-                ))}
-              </div>
+                )}
 
-              <div className="receipt-total">
-                <div className="receipt-item">
-                  <span>Subtotal:</span>
-                  <span>${parseFloat(lastSale.receipt_data.subtotal).toFixed(2)}</span>
-                </div>
-                <div className="receipt-item">
-                  <span>Tax (8.5%):</span>
-                  <span>${parseFloat(lastSale.receipt_data.tax_amount).toFixed(2)}</span>
-                </div>
-                <div className="receipt-item">
-                  <span>================================</span>
-                </div>
-                <div className="receipt-item">
-                  <span><strong>TOTAL:</strong></span>
-                  <span><strong>${parseFloat(lastSale.receipt_data.total_amount).toFixed(2)}</strong></span>
-                </div>
-                <div className="receipt-item">
-                  <span>Payment ({lastSale.sale.payment_method.toUpperCase()}):</span>
-                  <span>${parseFloat(lastSale.receipt_data.payment_received || lastSale.receipt_data.total_amount).toFixed(2)}</span>
-                </div>
-                <div className="receipt-item">
-                  <span>Change:</span>
-                  <span>${parseFloat(lastSale.receipt_data.change_given || 0).toFixed(2)}</span>
-                </div>
-              </div>
-
-              <div className="receipt-footer">
-                <p>================================</p>
-                <p><strong>Thank you for your business!</strong></p>
-                <p>Drive safely! 🚗</p>
-                <p>Warranty: 30 days on parts</p>
-                <p>Returns: 7 days with receipt</p>
-                <p>================================</p>
-                <p>Auto Parts Center</p>
-                <p>Your trusted automotive partner</p>
-              </div>
-            </div>
-
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={() => printThermalReceipt()}
-                className="btn btn-primary flex-1 print-button"
-              >
-                <Receipt className="w-4 h-4" />
-                Print Receipt
-              </button>
-              <button
-                onClick={() => setShowReceipt(false)}
-                className="btn btn-outline flex-1"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Product Search Modal */}
-      {showProductSearch && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '600px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title">Search Products</h3>
-              <button
-                onClick={() => {
-                  setShowProductSearch(false);
-                  setSearchTerm('');
-                  setSearchResults([]);
-                }}
-                className="modal-close"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="mb-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by product name, brand, SKU, barcode, or category..."
-                  className="form-input pl-10"
-                  autoFocus
-                />
-              </div>
-              {searchTerm && (
-                <p className="text-xs text-gray-500 mt-2">
-                  {isSearching ? 'Searching...' : searchPagination.total > 0 ? `Found ${searchPagination.total} product${searchPagination.total !== 1 ? 's' : ''}` : 'No products found'}
-                </p>
-              )}
-            </div>
-
-            <div className="max-h-96 overflow-y-auto">
-              {isSearching ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                  <p className="text-gray-500">Searching products...</p>
-                </div>
-              ) : filteredProducts.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">
-                  {searchTerm ? 'No products found matching your search' : 'Start typing to search for products'}
-                </p>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    {filteredProducts.map(product => (
-                      <div
-                        key={product.id}
-                        className={`p-3 border rounded cursor-pointer hover:bg-gray-50 transition-colors ${
-                          product.stock <= 0 ? 'opacity-50' : ''
-                        }`}
-                        onClick={() => {
-                          if (product.stock > 0) {
-                            addToCart(product);
-                            setShowProductSearch(false);
-                            setSearchTerm('');
-                            setSearchResults([]);
-                          }
-                        }}
-                      >
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <h4 className="font-medium">{product.name}</h4>
-                            <p className="text-sm text-gray-500">
-                              {product.brand} • {product.sku || product.tire_size} • {product.category}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-green-600">${product.price}</p>
-                            <p className="text-xs text-gray-500">
-                              Stock: {product.stock}
-                              {product.stock <= 0 && <span className="text-red-500 ml-1">(Out)</span>}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {/* Pagination for search results */}
-                  {searchPagination.pages > 1 && (
-                    <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
-                      <div className="text-sm text-gray-700">
-                        Page {searchPagination.page} of {searchPagination.pages}
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => searchProducts(searchTerm, searchPagination.page - 1, searchPagination.limit)}
-                          disabled={searchPagination.page === 1}
-                          className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Previous
-                        </button>
-                        <button
-                          onClick={() => searchProducts(searchTerm, searchPagination.page + 1, searchPagination.limit)}
-                          disabled={searchPagination.page >= searchPagination.pages}
-                          className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Next
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Sales History Modal */}
-      {showHistory && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '800px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title">Sales History</h3>
-              <button
-                onClick={() => setShowHistory(false)}
-                className="modal-close"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Sale ID</th>
-                    <th>Date</th>
-                    <th>Total</th>
-                    <th>Payment</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {salesHistory.map(sale => (
-                    <tr key={sale.id}>
-                      <td>#{sale.id}</td>
-                      <td>{new Date(sale.created_at).toLocaleDateString()}</td>
-                      <td>${sale.total_amount}</td>
-                      <td className="capitalize">{sale.payment_method}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            
-            {/* Pagination Controls */}
-            {salesPagination.pages > 1 && (
-              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-                <div className="text-sm text-gray-700">
-                  Showing {((salesPagination.page - 1) * salesPagination.limit) + 1} to {Math.min(salesPagination.page * salesPagination.limit, salesPagination.total)} of {salesPagination.total} sales
-                </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => fetchSalesHistory(salesPagination.page - 1, salesPagination.limit)}
-                    disabled={salesPagination.page === 1}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Previous
-                  </button>
-                  <span className="px-4 py-2 text-sm font-medium text-gray-700">
-                    Page {salesPagination.page} of {salesPagination.pages}
-                  </span>
-                  <button
-                    onClick={() => fetchSalesHistory(salesPagination.page + 1, salesPagination.limit)}
-                    disabled={salesPagination.page >= salesPagination.pages}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Next
-                  </button>
+                {/* Customer Selection */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Customer (Optional)
+                  </label>
                   <select
-                    value={salesPagination.limit}
-                    onChange={(e) => {
-                      const newLimit = parseInt(e.target.value);
-                      setSalesPagination({ ...salesPagination, limit: newLimit, page: 1 });
-                      fetchSalesHistory(1, newLimit);
-                    }}
-                    className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    value={selectedCustomerId}
+                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    className="form-input"
                   >
-                    <option value="20">20 per page</option>
-                    <option value="50">50 per page</option>
-                    <option value="100">100 per page</option>
+                    <option value="">Walk-in Customer</option>
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.phone || 'No phone'})</option>
+                    ))}
                   </select>
                 </div>
+
+                {/* Partial Payment Toggle */}
+                <div className="mb-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isPartialPayment}
+                      onChange={(e) => setIsPartialPayment(e.target.checked)}
+                      className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Down Payment / Partial Payment</span>
+                  </label>
+                </div>
+
+                {isPartialPayment && (
+                  <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <label className="block text-sm font-medium text-blue-900 mb-1">
+                      Amount to Pay Now *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={amountPaid}
+                      onChange={(e) => setAmountPaid(e.target.value)}
+                      placeholder="Enter initial payment"
+                      className="form-input"
+                    />
+                    <p className="text-sm text-blue-700 mt-2 font-medium">
+                      Balance Remaining: {formatCurrency(parseFloat(totals.total) - (parseFloat(amountPaid) || 0))}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowCheckout(false)}
+                    className="btn btn-outline flex-1"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCheckout}
+                    disabled={loading}
+                    className="btn btn-success flex-1"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="spinner"></div>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <DollarSign className="w-4 h-4" />
+                        Complete Sale
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-            )}
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+
+        {/* Receipt Modal */}
+        {showReceipt && lastSale && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h3 className="modal-title">Receipt</h3>
+                <button
+                  onClick={() => setShowReceipt(false)}
+                  className="modal-close"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="receipt">
+                <div className="receipt-header">
+                  <h3>Go Tire Car Care Center</h3>
+                  <p>B2 L18-B Camarin Road, Camarin Rd, Caloocan, 1400 Metro Manila</p>
+                  <p>================================</p>
+                  <p>Sale ID: #{lastSale.sale.id}</p>
+                  <p>Date: {new Date(lastSale.sale.created_at).toLocaleDateString()}</p>
+                  <p>Time: {new Date(lastSale.sale.created_at).toLocaleTimeString()}</p>
+                  <p>Cashier: {lastSale.sale.cashier_name}</p>
+                  <p>================================</p>
+                </div>
+
+                <div className="receipt-items">
+                  {lastSale.items.map(item => (
+                    <div key={item.id} className="receipt-item">
+                      <div style={{ flex: 1 }}>
+                        <div className="product-name">{item.product_name}</div>
+                        <div className="product-details">
+                          Qty: {item.quantity} @ ${parseFloat(item.unit_price).toFixed(2)}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                        ${parseFloat(item.total_price).toFixed(2)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="receipt-total">
+                  <div className="receipt-item">
+                    <span>Subtotal:</span>
+                    <span>{formatCurrency(lastSale.receipt_data.subtotal)}</span>
+                  </div>
+                  {parseFloat(lastSale.receipt_data.discount_amount) > 0 && (
+                    <div className="receipt-item">
+                      <span>Discount:</span>
+                      <span>-{formatCurrency(lastSale.receipt_data.discount_amount)}</span>
+                    </div>
+                  )}
+                  <div className="receipt-item">
+                    <span>VAT ({parseFloat(settings.vat_rate?.value || 12)}%):</span>
+                    <span>{formatCurrency(lastSale.receipt_data.vat_amount || lastSale.receipt_data.tax_amount)}</span>
+                  </div>
+                  <div className="receipt-item">
+                    <span>================================</span>
+                  </div>
+                  <div className="receipt-item">
+                    <span><strong>TOTAL:</strong></span>
+                    <span><strong>{formatCurrency(lastSale.receipt_data.total_amount)}</strong></span>
+                  </div>
+                  <div className="receipt-item">
+                    <span>Payment ({lastSale.sale.payment_method.toUpperCase()}):</span>
+                    <span>{formatCurrency(lastSale.receipt_data.payment_received || lastSale.receipt_data.total_amount)}</span>
+                  </div>
+                  <div className="receipt-item">
+                    <span>Change:</span>
+                    <span>{formatCurrency(lastSale.receipt_data.change_given || 0)}</span>
+                  </div>
+                  {lastSale.sale.status === 'pending' && (
+                    <div className="receipt-item" style={{ marginTop: '5px', color: 'red', fontWeight: 'bold' }}>
+                      <span>BALANCE DUE:</span>
+                      <span>{formatCurrency(parseFloat(lastSale.sale.total_amount) - parseFloat(lastSale.sale.amount_paid))}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="receipt-footer">
+                  <p>================================</p>
+                  <p><strong>Thank you for your business!</strong></p>
+                  <p>Drive safely! 🚗</p>
+                  <p>Warranty: 30 days on parts</p>
+                  <p>Returns: 7 days with receipt</p>
+                  <p>================================</p>
+                  <p>Auto Parts Center</p>
+                  <p>Your trusted automotive partner</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={() => printThermalReceipt()}
+                  className="btn btn-primary flex-1 print-button"
+                >
+                  <Receipt className="w-4 h-4" />
+                  Print Receipt
+                </button>
+                <button
+                  onClick={() => setShowReceipt(false)}
+                  className="btn btn-outline flex-1"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Product Search Modal */}
+        {showProductSearch && (
+          <div className="modal-overlay">
+            <div className="modal-content" style={{ maxWidth: '600px' }}>
+              <div className="modal-header">
+                <h3 className="modal-title">Search Products</h3>
+                <button
+                  onClick={() => {
+                    setShowProductSearch(false);
+                    setSearchTerm('');
+                    setSearchResults([]);
+                  }}
+                  className="modal-close"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="mb-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search by product name, brand, SKU, barcode, or category..."
+                    className="form-input pl-10"
+                    autoFocus
+                  />
+                </div>
+                {searchTerm && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    {isSearching ? 'Searching...' : searchPagination.total > 0 ? `Found ${searchPagination.total} product${searchPagination.total !== 1 ? 's' : ''}` : 'No products found'}
+                  </p>
+                )}
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                {isSearching ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <p className="text-gray-500">Searching products...</p>
+                  </div>
+                ) : filteredProducts.length === 0 ? (
+                  <p className="text-center text-gray-500 py-8">
+                    {searchTerm ? 'No products found matching your search' : 'Start typing to search for products'}
+                  </p>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      {filteredProducts.map(product => (
+                        <div
+                          key={product.id}
+                          className={`p-3 border rounded cursor-pointer hover:bg-gray-50 transition-colors ${product.stock <= 0 ? 'opacity-50' : ''
+                            }`}
+                          onClick={() => {
+                            if (product.stock > 0) {
+                              addToCart(product);
+                              setShowProductSearch(false);
+                              setSearchTerm('');
+                              setSearchResults([]);
+                            }
+                          }}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div className="flex-1">
+                              <h4 className="font-medium">{product.name}</h4>
+                              <p className="text-sm text-gray-500">
+                                {product.brand} • {product.sku || product.tire_size} • {product.category}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <p className="font-bold text-green-600">{formatCurrency(product.price)}</p>
+                                <p className="text-xs text-gray-500">Stock: {product.stock}</p>
+                              </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedProductForHistory(product);
+                                  fetchProductHistory(product.id);
+                                }}
+                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-full"
+                                title="Product History"
+                              >
+                                <History className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (product.stock > 0) {
+                                    addToCart(product);
+                                    setShowProductSearch(false);
+                                    setSearchTerm('');
+                                    setSearchResults([]);
+                                  }
+                                }}
+                                className="p-2 rounded-full hover:opacity-80"
+                                style={{ backgroundColor: user?.theme_color || '#dc2626', color: 'white' }}
+                              >
+                                <Plus className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Pagination for search results */}
+                    {searchPagination.pages > 1 && (
+                      <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
+                        <div className="text-sm text-gray-700">
+                          Page {searchPagination.page} of {searchPagination.pages}
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => searchProducts(searchTerm, searchPagination.page - 1, searchPagination.limit)}
+                            disabled={searchPagination.page === 1}
+                            className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Previous
+                          </button>
+                          <button
+                            onClick={() => searchProducts(searchTerm, searchPagination.page + 1, searchPagination.limit)}
+                            disabled={searchPagination.page >= searchPagination.pages}
+                            className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sales History Modal */}
+        {showHistory && (
+          <div className="modal-overlay">
+            <div className="modal-content" style={{ maxWidth: '800px' }}>
+              <div className="modal-header">
+                <h3 className="modal-title">Sales History</h3>
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="modal-close"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Sale ID</th>
+                      <th>Date</th>
+                      <th>Total</th>
+                      <th>Payment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {salesHistory.map(sale => (
+                      <tr key={sale.id}>
+                        <td>#{sale.id}</td>
+                        <td>{new Date(sale.created_at).toLocaleDateString()}</td>
+                        <td>${sale.total_amount}</td>
+                        <td className="capitalize">{sale.payment_method}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Controls */}
+              {salesPagination.pages > 1 && (
+                <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                  <div className="text-sm text-gray-700">
+                    Showing {((salesPagination.page - 1) * salesPagination.limit) + 1} to {Math.min(salesPagination.page * salesPagination.limit, salesPagination.total)} of {salesPagination.total} sales
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => fetchSalesHistory(salesPagination.page - 1, salesPagination.limit)}
+                      disabled={salesPagination.page === 1}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <span className="px-4 py-2 text-sm font-medium text-gray-700">
+                      Page {salesPagination.page} of {salesPagination.pages}
+                    </span>
+                    <button
+                      onClick={() => fetchSalesHistory(salesPagination.page + 1, salesPagination.limit)}
+                      disabled={salesPagination.page >= salesPagination.pages}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                    <select
+                      value={salesPagination.limit}
+                      onChange={(e) => {
+                        const newLimit = parseInt(e.target.value);
+                        setSalesPagination({ ...salesPagination, limit: newLimit, page: 1 });
+                        fetchSalesHistory(1, newLimit);
+                      }}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="20">20 per page</option>
+                      <option value="50">50 per page</option>
+                      <option value="100">100 per page</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {/* Product History Modal */}
+        {showHistoryModal && (
+          <div className="modal-overlay">
+            <div className="modal-content" style={{ maxWidth: '600px' }}>
+              <div className="modal-header">
+                <div>
+                  <h3 className="modal-title">Product History</h3>
+                  <p className="text-sm text-gray-500">{selectedProductForHistory?.name}</p>
+                </div>
+                <button
+                  onClick={() => setShowHistoryModal(false)}
+                  className="modal-close"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="max-h-96 overflow-y-auto">
+                {productHistory.length > 0 ? (
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Customer</th>
+                        <th>Qty</th>
+                        <th>Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productHistory.map((item, idx) => (
+                        <tr key={idx}>
+                          <td>{new Date(item.created_at).toLocaleDateString()}</td>
+                          <td>{item.customer_name || 'Walk-in'}</td>
+                          <td>{item.quantity}</td>
+                          <td>{formatCurrency(item.unit_price)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="text-center text-gray-500 py-8">No sales history found for this product.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   );
 };

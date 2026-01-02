@@ -73,13 +73,20 @@ class Database {
         if (useTurso) {
             const result = await this.client.execute(sql, params);
             // libSQL returns lastInsertRowid and rowsAffected
-            return { 
-                id: result.lastInsertRowid ? Number(result.lastInsertRowid) : undefined,
+            // result.lastInsertRowid might be a BigInt, convert to Number
+            let lastId = undefined;
+            if (result.lastInsertRowid !== undefined) {
+                lastId = typeof result.lastInsertRowid === 'bigint'
+                    ? Number(result.lastInsertRowid)
+                    : result.lastInsertRowid;
+            }
+            return {
+                id: lastId,
                 changes: result.rowsAffected || 0
             };
         } else {
             return new Promise((resolve, reject) => {
-                this.db.run(sql, params, function(err) {
+                this.db.run(sql, params, function (err) {
                     if (err) {
                         reject(err);
                     } else {
@@ -195,7 +202,7 @@ class Database {
         } else {
             // Local SQLite: execute transaction commands normally
             return new Promise((resolve, reject) => {
-                this.db.run(sql, [], function(err) {
+                this.db.run(sql, [], function (err) {
                     if (err) {
                         reject(err);
                     } else {

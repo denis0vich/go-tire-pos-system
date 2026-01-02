@@ -57,9 +57,9 @@ router.get('/barcode/:barcode', authenticateToken, requireCashier, async (req, r
     try {
         const { barcode } = req.params;
         const db = new Database();
-        
+
         const product = await db.get('SELECT * FROM products WHERE barcode = ?', [barcode]);
-        
+
         if (!product) {
             return res.status(404).json({ error: 'Product not found' });
         }
@@ -76,9 +76,9 @@ router.get('/:id', authenticateToken, requireCashier, async (req, res) => {
     try {
         const { id } = req.params;
         const db = new Database();
-        
+
         const product = await db.get('SELECT * FROM products WHERE id = ?', [id]);
-        
+
         if (!product) {
             return res.status(404).json({ error: 'Product not found' });
         }
@@ -138,11 +138,15 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
             [name, sku, barcode, parseFloat(price), cost ? parseFloat(cost) : null, parseInt(stock), category, description, parseInt(min_stock), brand, tire_size]
         );
 
+        if (!result.id) {
+            throw new Error('Failed to retrieve new product ID');
+        }
+
         const newProduct = await db.get('SELECT * FROM products WHERE id = ?', [result.id]);
         res.status(201).json(newProduct);
     } catch (error) {
         console.error('Create product error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 });
 
@@ -273,8 +277,8 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
         // Check if product is used in any sales
         const salesCount = await db.get('SELECT COUNT(*) as count FROM sale_items WHERE product_id = ?', [id]);
         if (salesCount.count > 0) {
-            return res.status(400).json({ 
-                error: 'Cannot delete product that has been sold. Consider setting stock to 0 instead.' 
+            return res.status(400).json({
+                error: 'Cannot delete product that has been sold. Consider setting stock to 0 instead.'
             });
         }
 
@@ -298,7 +302,7 @@ router.patch('/:id/stock', authenticateToken, requireCashier, async (req, res) =
 
         const db = new Database();
         const product = await db.get('SELECT * FROM products WHERE id = ?', [id]);
-        
+
         if (!product) {
             return res.status(404).json({ error: 'Product not found' });
         }
@@ -308,13 +312,57 @@ router.patch('/:id/stock', authenticateToken, requireCashier, async (req, res) =
             return res.status(400).json({ error: 'Insufficient stock' });
         }
 
-        await db.run('UPDATE products SET stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', 
-                     [newStock, id]);
+        await db.run('UPDATE products SET stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            [newStock, id]);
 
         const updatedProduct = await db.get('SELECT * FROM products WHERE id = ?', [id]);
         res.json(updatedProduct);
     } catch (error) {
         console.error('Update stock error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Bulk import products (admin only)
+router.post('/bulk', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { products } = req.body;
+
+        if (!products || !Array.isArray(products) || products.length === 0) {
+            return res.status(400).json({ error: 'Products array is required' });
+        }
+
+        const db = new Database();
+        const results = {
+            success: 0,
+            failed: 0,
+            errors: []
+        };
+
+        for (const product of products) {
+            try {
+                const { name, sku, barcode, price, cost, stock = 0, category, description, min_stock = 5, brand, tire_size } = product;
+
+                if (!name || !price || !sku) {
+                    results.failed++;
+                    results.errors.push({ name: name || 'Unknown', error: 'Name, price, and SKU are required' });
+                    continue;
+                }
+
+                await db.run(
+                    'INSERT INTO products (name, sku, barcode, price, cost, stock, category, description, min_stock, brand, tire_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [name, sku, barcode, parseFloat(price), cost ? parseFloat(cost) : null, parseInt(stock), category, description, parseInt(min_stock), brand, tire_size]
+                );
+                results.success++;
+            } catch (err) {
+                results.failed++;
+                results.errors.push({ name: product.name || 'Unknown', error: err.message });
+            }
+        }
+
+        res.json(results);
+    } catch (error) {
+        console.error('Bulk import error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
