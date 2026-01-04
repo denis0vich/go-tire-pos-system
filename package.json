@@ -8,9 +8,17 @@
     "server": "cd backend && node server.js",
     "client": "cd frontend && npm start",
     "build": "cd frontend && npm run build",
-    "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+    "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+    "migrate": "node backend/database/migrate.js",
+    "start": "npm run migrate && npm run server"
   },
-  "keywords": ["pos", "point-of-sale", "sqlite", "barcode", "retail"],
+  "keywords": [
+    "pos",
+    "point-of-sale",
+    "sqlite",
+    "barcode",
+    "retail"
+  ],
   "author": "POS System Developer",
   "license": "MIT",
   "devDependencies": {
