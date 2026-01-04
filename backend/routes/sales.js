@@ -151,7 +151,7 @@ router.post('/', authenticateToken, requireCashier, async (req, res) => {
                     receipt_data: {
                         subtotal,
                         discount_amount,
-                        tax_amount,
+                        tax_amount: vat_amount,
                         total_amount,
                         payment_received,
                         change_given
@@ -231,7 +231,7 @@ router.post('/', authenticateToken, requireCashier, async (req, res) => {
                         receipt_data: {
                             subtotal,
                             discount_amount,
-                            tax_amount,
+                            tax_amount: vat_amount,
                             total_amount,
                             payment_received,
                             change_given
