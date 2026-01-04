@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import axios from 'axios';
@@ -499,20 +499,18 @@ const CashierDashboard = () => {
   };
 
   // Use search results if available, otherwise fall back to client-side filtering
-  const filteredProducts = useMemo(() => {
-    return searchTerm && showProductSearch && searchResults.length > 0
-      ? searchResults
-      : products.filter(product =>
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.barcode?.includes(searchTerm) ||
-        product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.tire_size?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-  }, [searchTerm, showProductSearch, searchResults, products]);
+  const filteredProducts = searchTerm && showProductSearch && searchResults.length > 0
+    ? searchResults
+    : products.filter(product =>
+      product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.barcode?.includes(searchTerm) ||
+      product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.tire_size?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
-  const totals = useMemo(() => calculateTotal(), [cart, adminOverride, overrideDiscount, settings]);
+  const totals = calculateTotal();
 
 
   return (
@@ -771,525 +769,533 @@ const CashierDashboard = () => {
         </div>
 
         {/* Checkout Modal */}
-        {showCheckout && (
-          <div className="modal-overlay">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h3 className="modal-title">Checkout</h3>
-                <button
-                  onClick={() => setShowCheckout(false)}
-                  className="modal-close"
-                >
-                  ×
-                </button>
-              </div>
+        <div
+          className="modal-overlay"
+          style={{ display: showCheckout ? 'flex' : 'none' }}
+        >
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3 className="modal-title">Checkout</h3>
+              <button
+                onClick={() => setShowCheckout(false)}
+                className="modal-close"
+              >
+                ×
+              </button>
+            </div>
 
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-medium mb-2">Order Summary</h4>
-                  <div className="bg-gray-50 p-3 rounded">
-                    {cart.map(item => (
-                      <div key={item.id} className="flex justify-between text-sm">
-                        <span>{item.name} x{item.quantity}</span>
-                        <span>${(item.price * item.quantity).toFixed(2)}</span>
-                      </div>
-                    ))}
-                    <div className="border-t pt-2 mt-2 font-medium">
-                      <div className="flex justify-between">
-                        <span>Total:</span>
-                        <span>${totals.total}</span>
-                      </div>
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-medium mb-2">Order Summary</h4>
+                <div className="bg-gray-50 p-3 rounded">
+                  {cart.map(item => (
+                    <div key={item.id} className="flex justify-between text-sm">
+                      <span>{item.name} x{item.quantity}</span>
+                      <span>${(item.price * item.quantity).toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <div className="border-t pt-2 mt-2 font-medium">
+                    <div className="flex justify-between">
+                      <span>Total:</span>
+                      <span>${totals.total}</span>
                     </div>
                   </div>
                 </div>
+              </div>
 
+              <div className="form-group">
+                <label className="form-label">Payment Method</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="form-select"
+                >
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="digital">Digital Payment</option>
+                </select>
+              </div>
+
+              {paymentMethod === 'cash' && (
                 <div className="form-group">
-                  <label className="form-label">Payment Method</label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="form-select"
-                  >
-                    <option value="cash">Cash</option>
-                    <option value="card">Card</option>
-                    <option value="digital">Digital Payment</option>
-                  </select>
-                </div>
-
-                {paymentMethod === 'cash' && (
-                  <div className="form-group">
-                    <label className="form-label">Amount Received</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={paymentReceived}
-                      onChange={(e) => setPaymentReceived(e.target.value)}
-                      placeholder="Enter amount received"
-                      className="form-input"
-                    />
-                    <p className="text-sm text-gray-600 mt-1">
-                      Change: {formatCurrency(Math.max(0, parseFloat(paymentReceived) - parseFloat(totals.total)))}
-                    </p>
-                  </div>
-                )}
-
-                {/* Customer Selection */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Customer (Optional)
-                  </label>
-                  <select
-                    value={selectedCustomerId}
-                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                  <label className="form-label">Amount Received</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={paymentReceived}
+                    onChange={(e) => setPaymentReceived(e.target.value)}
+                    placeholder="Enter amount received"
                     className="form-input"
-                  >
-                    <option value="">Walk-in Customer</option>
-                    {customers.map(c => (
-                      <option key={c.id} value={c.id}>{c.name} ({c.phone || 'No phone'})</option>
-                    ))}
-                  </select>
+                  />
+                  <p className="text-sm text-gray-600 mt-1">
+                    Change: {formatCurrency(Math.max(0, parseFloat(paymentReceived) - parseFloat(totals.total)))}
+                  </p>
                 </div>
+              )}
 
-                {/* Partial Payment Toggle */}
-                <div className="mb-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isPartialPayment}
-                      onChange={(e) => setIsPartialPayment(e.target.checked)}
-                      className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
-                    />
-                    <span className="text-sm font-medium text-gray-700">Down Payment / Partial Payment</span>
+              {/* Customer Selection */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Customer (Optional)
+                </label>
+                <select
+                  value={selectedCustomerId}
+                  onChange={(e) => setSelectedCustomerId(e.target.value)}
+                  className="form-input"
+                >
+                  <option value="">Walk-in Customer</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.phone || 'No phone'})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Partial Payment Toggle */}
+              <div className="mb-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isPartialPayment}
+                    onChange={(e) => setIsPartialPayment(e.target.checked)}
+                    className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Down Payment / Partial Payment</span>
+                </label>
+              </div>
+
+              {isPartialPayment && (
+                <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <label className="block text-sm font-medium text-blue-900 mb-1">
+                    Amount to Pay Now *
                   </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={amountPaid}
+                    onChange={(e) => setAmountPaid(e.target.value)}
+                    placeholder="Enter initial payment"
+                    className="form-input"
+                  />
+                  <p className="text-sm text-blue-700 mt-2 font-medium">
+                    Balance Remaining: {formatCurrency(parseFloat(totals.total) - (parseFloat(amountPaid) || 0))}
+                  </p>
                 </div>
+              )}
 
-                {isPartialPayment && (
-                  <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <label className="block text-sm font-medium text-blue-900 mb-1">
-                      Amount to Pay Now *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      value={amountPaid}
-                      onChange={(e) => setAmountPaid(e.target.value)}
-                      placeholder="Enter initial payment"
-                      className="form-input"
-                    />
-                    <p className="text-sm text-blue-700 mt-2 font-medium">
-                      Balance Remaining: {formatCurrency(parseFloat(totals.total) - (parseFloat(amountPaid) || 0))}
-                    </p>
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowCheckout(false)}
-                    className="btn btn-outline flex-1"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleCheckout}
-                    disabled={loading}
-                    className="btn btn-success flex-1"
-                  >
-                    {loading ? (
-                      <>
-                        <div className="spinner"></div>
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <DollarSign className="w-4 h-4" />
-                        Complete Sale
-                      </>
-                    )}
-                  </button>
-                </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowCheckout(false)}
+                  className="btn btn-outline flex-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCheckout}
+                  disabled={loading}
+                  className="btn btn-success flex-1"
+                >
+                  {loading ? (
+                    <>
+                      <div className="spinner"></div>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <DollarSign className="w-4 h-4" />
+                      Complete Sale
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
-        )}
+        </div>
+      </div>
 
-        {/* Receipt Modal */}
-        {showReceipt && lastSale && (
-          <div className="modal-overlay">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h3 className="modal-title">Receipt</h3>
-                <button
-                  onClick={() => setShowReceipt(false)}
-                  className="modal-close"
-                >
-                  ×
-                </button>
-              </div>
+      {/* Receipt Modal */}
+      <div
+        className="modal-overlay"
+        style={{ display: showReceipt && lastSale ? 'flex' : 'none' }}
+      >
+        <div className="modal-content">
+          <div className="modal-header">
+            <h3 className="modal-title">Receipt</h3>
+            <button
+              onClick={() => setShowReceipt(false)}
+              className="modal-close"
+            >
+              ×
+            </button>
+          </div>
 
-              <div className="receipt">
-                <div className="receipt-header">
-                  <h3>Go Tire Car Care Center</h3>
-                  <p>B2 L18-B Camarin Road, Camarin Rd, Caloocan, 1400 Metro Manila</p>
-                  <p>================================</p>
-                  <p>Sale ID: #{lastSale.sale.id}</p>
-                  <p>Date: {new Date(lastSale.sale.created_at).toLocaleDateString()}</p>
-                  <p>Time: {new Date(lastSale.sale.created_at).toLocaleTimeString()}</p>
-                  <p>Cashier: {lastSale.sale.cashier_name}</p>
-                  <p>================================</p>
+          <div className="receipt">
+            <div className="receipt-header">
+              <h3>Go Tire Car Care Center</h3>
+              <p>B2 L18-B Camarin Road, Camarin Rd, Caloocan, 1400 Metro Manila</p>
+              <p>================================</p>
+              <p>Sale ID: #{lastSale?.sale?.id}</p>
+              <p>Date: {lastSale?.sale?.created_at ? new Date(lastSale.sale.created_at).toLocaleDateString() : ''}</p>
+              <p>Time: {lastSale?.sale?.created_at ? new Date(lastSale.sale.created_at).toLocaleTimeString() : ''}</p>
+              <p>Cashier: {lastSale?.sale?.cashier_name}</p>
+              <p>================================</p>
+            </div>
+
+            <div className="receipt-items">
+              {lastSale?.items?.map(item => (
+                <div key={item.id} className="receipt-item">
+                  <div style={{ flex: 1 }}>
+                    <div className="product-name">{item.product_name}</div>
+                    <div className="product-details">
+                      Qty: {item.quantity} @ ${parseFloat(item.unit_price).toFixed(2)}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                    ${parseFloat(item.total_price).toFixed(2)}
+                  </div>
                 </div>
+              ))}
+            </div>
 
-                <div className="receipt-items">
-                  {lastSale.items.map(item => (
-                    <div key={item.id} className="receipt-item">
-                      <div style={{ flex: 1 }}>
-                        <div className="product-name">{item.product_name}</div>
-                        <div className="product-details">
-                          Qty: {item.quantity} @ ${parseFloat(item.unit_price).toFixed(2)}
+            <div className="receipt-total">
+              <div className="receipt-item">
+                <span>Subtotal:</span>
+                <span>{formatCurrency(lastSale?.receipt_data?.subtotal)}</span>
+              </div>
+              {parseFloat(lastSale?.receipt_data?.discount_amount) > 0 && (
+                <div className="receipt-item">
+                  <span>Discount:</span>
+                  <span>-{formatCurrency(lastSale.receipt_data.discount_amount)}</span>
+                </div>
+              )}
+              <div className="receipt-item">
+                <span>VAT ({parseFloat(settings.vat_rate?.value || 12)}%):</span>
+                <span>{formatCurrency(lastSale?.receipt_data?.vat_amount || lastSale?.receipt_data?.tax_amount)}</span>
+              </div>
+              <div className="receipt-item">
+                <span>================================</span>
+              </div>
+              <div className="receipt-item">
+                <span><strong>TOTAL:</strong></span>
+                <span><strong>{formatCurrency(lastSale?.receipt_data?.total_amount)}</strong></span>
+              </div>
+              <div className="receipt-item">
+                <span>Payment ({lastSale?.sale?.payment_method?.toUpperCase()}):</span>
+                <span>{formatCurrency(lastSale?.receipt_data?.payment_received || lastSale?.receipt_data?.total_amount)}</span>
+              </div>
+              <div className="receipt-item">
+                <span>Change:</span>
+                <span>{formatCurrency(lastSale?.receipt_data?.change_given || 0)}</span>
+              </div>
+              {lastSale?.sale?.status === 'pending' && (
+                <div className="receipt-item" style={{ marginTop: '5px', color: 'red', fontWeight: 'bold' }}>
+                  <span>BALANCE DUE:</span>
+                  <span>{formatCurrency(parseFloat(lastSale.sale.total_amount) - parseFloat(lastSale.sale.amount_paid))}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="receipt-footer">
+              <p>================================</p>
+              <p><strong>Thank you for your business!</strong></p>
+              <p>Drive safely! 🚗</p>
+              <p>Warranty: 30 days on parts</p>
+              <p>Returns: 7 days with receipt</p>
+              <p>================================</p>
+              <p>Auto Parts Center</p>
+              <p>Your trusted automotive partner</p>
+            </div>
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            <button
+              onClick={() => printThermalReceipt()}
+              className="btn btn-primary flex-1 print-button"
+            >
+              <Receipt className="w-4 h-4" />
+              Print Receipt
+            </button>
+            <button
+              onClick={() => setShowReceipt(false)}
+              className="btn btn-outline flex-1"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Product Search Modal */}
+      <div
+        className="modal-overlay"
+        style={{ display: showProductSearch ? 'flex' : 'none' }}
+      >
+        <div className="modal-content" style={{ maxWidth: '600px' }}>
+          <div className="modal-header">
+            <h3 className="modal-title">Search Products</h3>
+            <button
+              onClick={() => {
+                setShowProductSearch(false);
+                setSearchTerm('');
+                setSearchResults([]);
+              }}
+              className="modal-close"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="mb-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                key="product-search-input"
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by product name, brand, SKU, barcode, or category..."
+                className="form-input pl-10"
+                autoFocus
+              />
+            </div>
+            {searchTerm && (
+              <p className="text-xs text-gray-500 mt-2">
+                {isSearching ? 'Searching...' : searchPagination.total > 0 ? `Found ${searchPagination.total} product${searchPagination.total !== 1 ? 's' : ''}` : 'No products found'}
+              </p>
+            )}
+          </div>
+
+          <div className="max-h-96 overflow-y-auto">
+            {isSearching ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                <p className="text-gray-500">Searching products...</p>
+              </div>
+            ) : filteredProducts.length === 0 ? (
+              <p className="text-center text-gray-500 py-8">
+                {searchTerm ? 'No products found matching your search' : 'Start typing to search for products'}
+              </p>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  {filteredProducts.map(product => (
+                    <div
+                      key={product.id}
+                      className={`p-3 border rounded cursor-pointer hover:bg-gray-50 transition-colors ${product.stock <= 0 ? 'opacity-50' : ''
+                        }`}
+                      onClick={() => {
+                        if (product.stock > 0) {
+                          addToCart(product);
+                          setShowProductSearch(false);
+                          setSearchTerm('');
+                          setSearchResults([]);
+                        }
+                      }}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div className="flex-1">
+                          <h4 className="font-medium">{product.name}</h4>
+                          <p className="text-sm text-gray-500">
+                            {product.brand} • {product.sku || product.tire_size} • {product.category}
+                          </p>
                         </div>
-                      </div>
-                      <div style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                        ${parseFloat(item.total_price).toFixed(2)}
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <p className="font-bold text-green-600">{formatCurrency(product.price)}</p>
+                            <p className="text-xs text-gray-500">Stock: {product.stock}</p>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProductForHistory(product);
+                              fetchProductHistory(product.id);
+                            }}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-full"
+                            title="Product History"
+                          >
+                            <History className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (product.stock > 0) {
+                                addToCart(product);
+                                setShowProductSearch(false);
+                                setSearchTerm('');
+                                setSearchResults([]);
+                              }
+                            }}
+                            className="p-2 rounded-full hover:opacity-80"
+                            style={{ backgroundColor: user?.theme_color || '#dc2626', color: 'white' }}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <div className="receipt-total">
-                  <div className="receipt-item">
-                    <span>Subtotal:</span>
-                    <span>{formatCurrency(lastSale.receipt_data.subtotal)}</span>
-                  </div>
-                  {parseFloat(lastSale.receipt_data.discount_amount) > 0 && (
-                    <div className="receipt-item">
-                      <span>Discount:</span>
-                      <span>-{formatCurrency(lastSale.receipt_data.discount_amount)}</span>
+                {/* Pagination for search results */}
+                {searchPagination.pages > 1 && (
+                  <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
+                    <div className="text-sm text-gray-700">
+                      Page {searchPagination.page} of {searchPagination.pages}
                     </div>
-                  )}
-                  <div className="receipt-item">
-                    <span>VAT ({parseFloat(settings.vat_rate?.value || 12)}%):</span>
-                    <span>{formatCurrency(lastSale.receipt_data.vat_amount || lastSale.receipt_data.tax_amount)}</span>
-                  </div>
-                  <div className="receipt-item">
-                    <span>================================</span>
-                  </div>
-                  <div className="receipt-item">
-                    <span><strong>TOTAL:</strong></span>
-                    <span><strong>{formatCurrency(lastSale.receipt_data.total_amount)}</strong></span>
-                  </div>
-                  <div className="receipt-item">
-                    <span>Payment ({lastSale.sale.payment_method.toUpperCase()}):</span>
-                    <span>{formatCurrency(lastSale.receipt_data.payment_received || lastSale.receipt_data.total_amount)}</span>
-                  </div>
-                  <div className="receipt-item">
-                    <span>Change:</span>
-                    <span>{formatCurrency(lastSale.receipt_data.change_given || 0)}</span>
-                  </div>
-                  {lastSale.sale.status === 'pending' && (
-                    <div className="receipt-item" style={{ marginTop: '5px', color: 'red', fontWeight: 'bold' }}>
-                      <span>BALANCE DUE:</span>
-                      <span>{formatCurrency(parseFloat(lastSale.sale.total_amount) - parseFloat(lastSale.sale.amount_paid))}</span>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => searchProducts(searchTerm, searchPagination.page - 1, searchPagination.limit)}
+                        disabled={searchPagination.page === 1}
+                        className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        onClick={() => searchProducts(searchTerm, searchPagination.page + 1, searchPagination.limit)}
+                        disabled={searchPagination.page >= searchPagination.pages}
+                        className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
                     </div>
-                  )}
-                </div>
-
-                <div className="receipt-footer">
-                  <p>================================</p>
-                  <p><strong>Thank you for your business!</strong></p>
-                  <p>Drive safely! 🚗</p>
-                  <p>Warranty: 30 days on parts</p>
-                  <p>Returns: 7 days with receipt</p>
-                  <p>================================</p>
-                  <p>Auto Parts Center</p>
-                  <p>Your trusted automotive partner</p>
-                </div>
-              </div>
-
-              <div className="flex gap-2 mt-4">
-                <button
-                  onClick={() => printThermalReceipt()}
-                  className="btn btn-primary flex-1 print-button"
-                >
-                  <Receipt className="w-4 h-4" />
-                  Print Receipt
-                </button>
-                <button
-                  onClick={() => setShowReceipt(false)}
-                  className="btn btn-outline flex-1"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
-        )}
+        </div>
+      </div>
 
-        {/* Product Search Modal */}
-        {showProductSearch && (
-          <div className="modal-overlay">
-            <div className="modal-content" style={{ maxWidth: '600px' }}>
-              <div className="modal-header">
-                <h3 className="modal-title">Search Products</h3>
+      {/* Sales History Modal */}
+      <div
+        className="modal-overlay"
+        style={{ display: showHistory ? 'flex' : 'none' }}
+      >
+        <div className="modal-content" style={{ maxWidth: '800px' }}>
+          <div className="modal-header">
+            <h3 className="modal-title">Sales History</h3>
+            <button
+              onClick={() => setShowHistory(false)}
+              className="modal-close"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Sale ID</th>
+                  <th>Date</th>
+                  <th>Total</th>
+                  <th>Payment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesHistory.map(sale => (
+                  <tr key={sale.id}>
+                    <td>#{sale.id}</td>
+                    <td>{new Date(sale.created_at).toLocaleDateString()}</td>
+                    <td>${sale.total_amount}</td>
+                    <td className="capitalize">{sale.payment_method}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          {salesPagination.pages > 1 && (
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+              <div className="text-sm text-gray-700">
+                Showing {((salesPagination.page - 1) * salesPagination.limit) + 1} to {Math.min(salesPagination.page * salesPagination.limit, salesPagination.total)} of {salesPagination.total} sales
+              </div>
+              <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => {
-                    setShowProductSearch(false);
-                    setSearchTerm('');
-                    setSearchResults([]);
+                  onClick={() => fetchSalesHistory(salesPagination.page - 1, salesPagination.limit)}
+                  disabled={salesPagination.page === 1}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <span className="px-4 py-2 text-sm font-medium text-gray-700">
+                  Page {salesPagination.page} of {salesPagination.pages}
+                </span>
+                <button
+                  onClick={() => fetchSalesHistory(salesPagination.page + 1, salesPagination.limit)}
+                  disabled={salesPagination.page >= salesPagination.pages}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+                <select
+                  value={salesPagination.limit}
+                  onChange={(e) => {
+                    const newLimit = parseInt(e.target.value);
+                    setSalesPagination({ ...salesPagination, limit: newLimit, page: 1 });
+                    fetchSalesHistory(1, newLimit);
                   }}
-                  className="modal-close"
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  ×
-                </button>
-              </div>
-
-              <div className="mb-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search by product name, brand, SKU, barcode, or category..."
-                    className="form-input pl-10"
-                    autoFocus
-                  />
-                </div>
-                {searchTerm && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    {isSearching ? 'Searching...' : searchPagination.total > 0 ? `Found ${searchPagination.total} product${searchPagination.total !== 1 ? 's' : ''}` : 'No products found'}
-                  </p>
-                )}
-              </div>
-
-              <div className="max-h-96 overflow-y-auto">
-                {isSearching ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                    <p className="text-gray-500">Searching products...</p>
-                  </div>
-                ) : filteredProducts.length === 0 ? (
-                  <p className="text-center text-gray-500 py-8">
-                    {searchTerm ? 'No products found matching your search' : 'Start typing to search for products'}
-                  </p>
-                ) : (
-                  <>
-                    <div className="space-y-2">
-                      {filteredProducts.map(product => (
-                        <div
-                          key={product.id}
-                          className={`p-3 border rounded cursor-pointer hover:bg-gray-50 transition-colors ${product.stock <= 0 ? 'opacity-50' : ''
-                            }`}
-                          onClick={() => {
-                            if (product.stock > 0) {
-                              addToCart(product);
-                              setShowProductSearch(false);
-                              setSearchTerm('');
-                              setSearchResults([]);
-                            }
-                          }}
-                        >
-                          <div className="flex justify-between items-center">
-                            <div className="flex-1">
-                              <h4 className="font-medium">{product.name}</h4>
-                              <p className="text-sm text-gray-500">
-                                {product.brand} • {product.sku || product.tire_size} • {product.category}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <div className="text-right">
-                                <p className="font-bold text-green-600">{formatCurrency(product.price)}</p>
-                                <p className="text-xs text-gray-500">Stock: {product.stock}</p>
-                              </div>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedProductForHistory(product);
-                                  fetchProductHistory(product.id);
-                                }}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-full"
-                                title="Product History"
-                              >
-                                <History className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (product.stock > 0) {
-                                    addToCart(product);
-                                    setShowProductSearch(false);
-                                    setSearchTerm('');
-                                    setSearchResults([]);
-                                  }
-                                }}
-                                className="p-2 rounded-full hover:opacity-80"
-                                style={{ backgroundColor: user?.theme_color || '#dc2626', color: 'white' }}
-                              >
-                                <Plus className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Pagination for search results */}
-                    {searchPagination.pages > 1 && (
-                      <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
-                        <div className="text-sm text-gray-700">
-                          Page {searchPagination.page} of {searchPagination.pages}
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => searchProducts(searchTerm, searchPagination.page - 1, searchPagination.limit)}
-                            disabled={searchPagination.page === 1}
-                            className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Previous
-                          </button>
-                          <button
-                            onClick={() => searchProducts(searchTerm, searchPagination.page + 1, searchPagination.limit)}
-                            disabled={searchPagination.page >= searchPagination.pages}
-                            className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Next
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
+                  <option value="20">20 per page</option>
+                  <option value="50">50 per page</option>
+                  <option value="100">100 per page</option>
+                </select>
               </div>
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* Product History Modal */}
+      <div
+        className="modal-overlay"
+        style={{ display: showHistoryModal ? 'flex' : 'none' }}
+      >
+        <div className="modal-content" style={{ maxWidth: '600px' }}>
+          <div className="modal-header">
+            <div>
+              <h3 className="modal-title">Product History</h3>
+              <p className="text-sm text-gray-500">{selectedProductForHistory?.name}</p>
+            </div>
+            <button
+              onClick={() => setShowHistoryModal(false)}
+              className="modal-close"
+            >
+              ×
+            </button>
           </div>
-        )}
-
-        {/* Sales History Modal */}
-        {showHistory && (
-          <div className="modal-overlay">
-            <div className="modal-content" style={{ maxWidth: '800px' }}>
-              <div className="modal-header">
-                <h3 className="modal-title">Sales History</h3>
-                <button
-                  onClick={() => setShowHistory(false)}
-                  className="modal-close"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Sale ID</th>
-                      <th>Date</th>
-                      <th>Total</th>
-                      <th>Payment</th>
+          <div className="max-h-96 overflow-y-auto">
+            {productHistory.length > 0 ? (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Qty</th>
+                    <th>Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productHistory.map((item, idx) => (
+                    <tr key={idx}>
+                      <td>{new Date(item.created_at).toLocaleDateString()}</td>
+                      <td>{item.customer_name || 'Walk-in'}</td>
+                      <td>{item.quantity}</td>
+                      <td>{formatCurrency(item.unit_price)}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {salesHistory.map(sale => (
-                      <tr key={sale.id}>
-                        <td>#{sale.id}</td>
-                        <td>{new Date(sale.created_at).toLocaleDateString()}</td>
-                        <td>${sale.total_amount}</td>
-                        <td className="capitalize">{sale.payment_method}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination Controls */}
-              {salesPagination.pages > 1 && (
-                <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-                  <div className="text-sm text-gray-700">
-                    Showing {((salesPagination.page - 1) * salesPagination.limit) + 1} to {Math.min(salesPagination.page * salesPagination.limit, salesPagination.total)} of {salesPagination.total} sales
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => fetchSalesHistory(salesPagination.page - 1, salesPagination.limit)}
-                      disabled={salesPagination.page === 1}
-                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Previous
-                    </button>
-                    <span className="px-4 py-2 text-sm font-medium text-gray-700">
-                      Page {salesPagination.page} of {salesPagination.pages}
-                    </span>
-                    <button
-                      onClick={() => fetchSalesHistory(salesPagination.page + 1, salesPagination.limit)}
-                      disabled={salesPagination.page >= salesPagination.pages}
-                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Next
-                    </button>
-                    <select
-                      value={salesPagination.limit}
-                      onChange={(e) => {
-                        const newLimit = parseInt(e.target.value);
-                        setSalesPagination({ ...salesPagination, limit: newLimit, page: 1 });
-                        fetchSalesHistory(1, newLimit);
-                      }}
-                      className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="20">20 per page</option>
-                      <option value="50">50 per page</option>
-                      <option value="100">100 per page</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-            </div>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-center text-gray-500 py-8">No sales history found for this product.</p>
+            )}
           </div>
-        )}
-        {/* Product History Modal */}
-        {showHistoryModal && (
-          <div className="modal-overlay">
-            <div className="modal-content" style={{ maxWidth: '600px' }}>
-              <div className="modal-header">
-                <div>
-                  <h3 className="modal-title">Product History</h3>
-                  <p className="text-sm text-gray-500">{selectedProductForHistory?.name}</p>
-                </div>
-                <button
-                  onClick={() => setShowHistoryModal(false)}
-                  className="modal-close"
-                >
-                  ×
-                </button>
-              </div>
-              <div className="max-h-96 overflow-y-auto">
-                {productHistory.length > 0 ? (
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Customer</th>
-                        <th>Qty</th>
-                        <th>Price</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {productHistory.map((item, idx) => (
-                        <tr key={idx}>
-                          <td>{new Date(item.created_at).toLocaleDateString()}</td>
-                          <td>{item.customer_name || 'Walk-in'}</td>
-                          <td>{item.quantity}</td>
-                          <td>{formatCurrency(item.unit_price)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <p className="text-center text-gray-500 py-8">No sales history found for this product.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </>
   );
 };
 
 export default CashierDashboard;
+
