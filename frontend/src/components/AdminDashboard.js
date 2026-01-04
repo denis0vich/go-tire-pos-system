@@ -596,7 +596,7 @@ const AdminDashboard = () => {
   const analytics = getAnalyticsData();
 
   // User Modal Component
-  const UserModal = () => (
+  const renderUserModal = () => (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
       style={{ display: showUserModal ? 'flex' : 'none' }}
@@ -1576,7 +1576,7 @@ const AdminDashboard = () => {
 
   // Product Modal Component
   // Customer Modal Component
-  const CustomerModal = () => (
+  const renderCustomerModal = () => (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
       style={{ display: showCustomerModal ? 'flex' : 'none' }}
@@ -1667,7 +1667,7 @@ const AdminDashboard = () => {
   );
 
   // Product History Modal
-  const ProductHistoryModal = () => (
+  const renderProductHistoryModal = () => (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
       style={{ display: showHistoryModal ? 'flex' : 'none' }}
@@ -1716,7 +1716,7 @@ const AdminDashboard = () => {
     </div>
   );
 
-  const ProductModal = () => (
+  const renderProductModal = () => (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
       style={{ display: showProductModal ? 'flex' : 'none' }}
@@ -1954,7 +1954,7 @@ const AdminDashboard = () => {
     </div>
   );
 
-  const ImportModal = () => (
+  const renderImportModal = () => (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
       style={{ display: showImportModal ? 'flex' : 'none' }}
@@ -2088,11 +2088,11 @@ const AdminDashboard = () => {
       </div>
 
       {/* Modals */}
-      <ProductModal />
-      <UserModal />
-      <CustomerModal />
-      <ProductHistoryModal />
-      <ImportModal />
+      {renderProductModal()}
+      {renderUserModal()}
+      {renderCustomerModal()}
+      {renderProductHistoryModal()}
+      {renderImportModal()}
     </div>
   );
 };
