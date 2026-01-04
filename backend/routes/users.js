@@ -137,8 +137,7 @@ router.patch('/theme-color', authenticateToken, async (req, res) => {
 
         // Check if theme_color column exists (backward compatibility)
         try {
-            const columns = await db.all(`PRAGMA table_info(users)`);
-            const hasThemeColor = columns.some(col => col.name === 'theme_color');
+            const hasThemeColor = await db.hasColumn('users', 'theme_color');
 
             if (hasThemeColor) {
                 await db.run(

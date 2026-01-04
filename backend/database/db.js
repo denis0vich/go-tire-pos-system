@@ -213,6 +213,28 @@ class Database {
         }
     }
 
+    // Check if a table exists
+    async hasTable(tableName) {
+        try {
+            const result = await this.get(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, [tableName]);
+            return !!result;
+        } catch (error) {
+            console.error(`Error checking if table ${tableName} exists:`, error);
+            return false;
+        }
+    }
+
+    // Check if a column exists in a table
+    async hasColumn(tableName, columnName) {
+        try {
+            const columns = await this.query(`PRAGMA table_info(${tableName})`);
+            return columns.some(col => col.name === columnName);
+        } catch (error) {
+            console.error(`Error checking if column ${columnName} exists in ${tableName}:`, error);
+            return false;
+        }
+    }
+
     // Close database connection
     async close() {
         if (useTurso) {

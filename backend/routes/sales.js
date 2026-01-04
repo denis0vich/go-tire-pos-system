@@ -58,6 +58,13 @@ router.post('/', authenticateToken, requireCashier, async (req, res) => {
             });
         }
 
+        // Check for column existence for backward compatibility
+        const hasVatAmount = await db.hasColumn('sales', 'vat_amount');
+        const hasCustomerId = await db.hasColumn('sales', 'customer_id');
+        const hasStatus = await db.hasColumn('sales', 'status');
+        const hasAmountPaid = await db.hasColumn('sales', 'amount_paid');
+        const hasPaymentsTable = await db.hasTable('payments');
+
         // Calculate VAT and total
         const vat_amount = (subtotal - discount_amount) * vatRate;
         const total_amount = subtotal - discount_amount + vat_amount;
@@ -77,19 +84,33 @@ router.post('/', authenticateToken, requireCashier, async (req, res) => {
 
             if (isUsingTurso) {
                 // Turso: Execute operations sequentially (each execute is atomic)
-                // Insert sale record
+                // Construct dynamic insert for sales
+                let salesColumns = ['cashier_id', 'total_amount', hasVatAmount ? 'vat_amount' : 'tax_amount', 'discount_amount', 'payment_method', 'payment_received', 'change_given'];
+                let salesParams = [cashier_id, total_amount, vat_amount, discount_amount, payment_method, payment_received, change_given];
+
+                if (hasCustomerId) {
+                    salesColumns.push('customer_id');
+                    salesParams.push(customer_id);
+                }
+                if (hasAmountPaid) {
+                    salesColumns.push('amount_paid');
+                    salesParams.push(amount_paid);
+                }
+                if (hasStatus) {
+                    salesColumns.push('status');
+                    salesParams.push(status);
+                }
+
+                const placeholders = salesParams.map(() => '?').join(', ');
                 const saleResult = await db.run(
-                    `INSERT INTO sales (cashier_id, customer_id, total_amount, vat_amount, discount_amount, 
-                     payment_method, payment_received, change_given, amount_paid, status) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [cashier_id, customer_id, total_amount, vat_amount, discount_amount,
-                        payment_method, payment_received, change_given, amount_paid, status]
+                    `INSERT INTO sales (${salesColumns.join(', ')}) VALUES (${placeholders})`,
+                    salesParams
                 );
 
                 const sale_id = saleResult.id;
 
-                // Add initial payment to payments table
-                if (amount_paid > 0) {
+                // Add initial payment to payments table if it exists
+                if (hasPaymentsTable && amount_paid > 0) {
                     await db.run(
                         'INSERT INTO payments (sale_id, amount, payment_method, notes) VALUES (?, ?, ?, ?)',
                         [sale_id, amount_paid, payment_method, 'Initial payment']
@@ -141,19 +162,33 @@ router.post('/', authenticateToken, requireCashier, async (req, res) => {
                 await db.run('BEGIN TRANSACTION');
 
                 try {
-                    // Insert sale record
+                    // Construct dynamic insert for sales
+                    let salesColumns = ['cashier_id', 'total_amount', hasVatAmount ? 'vat_amount' : 'tax_amount', 'discount_amount', 'payment_method', 'payment_received', 'change_given'];
+                    let salesParams = [cashier_id, total_amount, vat_amount, discount_amount, payment_method, payment_received, change_given];
+
+                    if (hasCustomerId) {
+                        salesColumns.push('customer_id');
+                        salesParams.push(customer_id);
+                    }
+                    if (hasAmountPaid) {
+                        salesColumns.push('amount_paid');
+                        salesParams.push(amount_paid);
+                    }
+                    if (hasStatus) {
+                        salesColumns.push('status');
+                        salesParams.push(status);
+                    }
+
+                    const placeholders = salesParams.map(() => '?').join(', ');
                     const saleResult = await db.run(
-                        `INSERT INTO sales (cashier_id, customer_id, total_amount, vat_amount, discount_amount, 
-                         payment_method, payment_received, change_given, amount_paid, status) 
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [cashier_id, customer_id, total_amount, vat_amount, discount_amount,
-                            payment_method, payment_received, change_given, amount_paid, status]
+                        `INSERT INTO sales (${salesColumns.join(', ')}) VALUES (${placeholders})`,
+                        salesParams
                     );
 
                     const sale_id = saleResult.id;
 
-                    // Add initial payment to payments table
-                    if (amount_paid > 0) {
+                    // Add initial payment to payments table if it exists
+                    if (hasPaymentsTable && amount_paid > 0) {
                         await db.run(
                             'INSERT INTO payments (sale_id, amount, payment_method, notes) VALUES (?, ?, ?, ?)',
                             [sale_id, amount_paid, payment_method, 'Initial payment']
@@ -369,12 +404,16 @@ router.get('/reports/summary', authenticateToken, requireAdmin, async (req, res)
             params.push(cashier_id);
         }
 
+        // Check for column existence for backward compatibility
+        const hasVatAmount = await db.hasColumn('sales', 'vat_amount');
+        const taxColumn = hasVatAmount ? 'vat_amount' : 'tax_amount';
+
         // Get summary statistics (backward compatible with both tax_amount and vat_amount)
         const summary = await db.get(`
             SELECT 
                 COUNT(*) as total_sales,
                 SUM(total_amount) as total_revenue,
-                COALESCE(SUM(vat_amount), SUM(tax_amount)) as total_tax,
+                SUM(${taxColumn}) as total_tax,
                 SUM(discount_amount) as total_discounts,
                 AVG(total_amount) as average_sale
             FROM sales ${whereClause}
@@ -444,6 +483,10 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
             return res.status(400).json({ error: 'Invalid period. Use: daily, weekly, monthly, or yearly' });
         }
 
+        // Check for column existence for backward compatibility
+        const hasVatAmount = await db.hasColumn('sales', 'vat_amount');
+        const taxColumn = hasVatAmount ? 'vat_amount' : 'tax_amount';
+
         // Get sales data grouped by period
         let salesData = [];
         try {
@@ -453,7 +496,7 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
                         DATE(created_at) as period,
                         COUNT(*) as sales_count,
                         SUM(total_amount) as revenue,
-                        COALESCE(SUM(vat_amount), SUM(tax_amount)) as tax_collected,
+                        SUM(${taxColumn}) as tax_collected,
                         SUM(discount_amount) as discounts_given,
                         AVG(total_amount) as avg_sale_amount
                     FROM sales 
@@ -467,7 +510,7 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
                         strftime('%Y-W%W', created_at) as period,
                         COUNT(*) as sales_count,
                         SUM(total_amount) as revenue,
-                        COALESCE(SUM(vat_amount), SUM(tax_amount)) as tax_collected,
+                        SUM(${taxColumn}) as tax_collected,
                         SUM(discount_amount) as discounts_given,
                         AVG(total_amount) as avg_sale_amount
                     FROM sales 
@@ -481,7 +524,7 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
                         strftime('%Y-%m', created_at) as period,
                         COUNT(*) as sales_count,
                         SUM(total_amount) as revenue,
-                        COALESCE(SUM(vat_amount), SUM(tax_amount)) as tax_collected,
+                        SUM(${taxColumn}) as tax_collected,
                         SUM(discount_amount) as discounts_given,
                         AVG(total_amount) as avg_sale_amount
                     FROM sales 
@@ -495,7 +538,7 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
                         strftime('%Y', created_at) as period,
                         COUNT(*) as sales_count,
                         SUM(total_amount) as revenue,
-                        COALESCE(SUM(vat_amount), SUM(tax_amount)) as tax_collected,
+                        SUM(${taxColumn}) as tax_collected,
                         SUM(discount_amount) as discounts_given,
                         AVG(total_amount) as avg_sale_amount
                     FROM sales 
