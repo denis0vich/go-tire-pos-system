@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import axios from 'axios';
@@ -42,6 +42,8 @@ const CashierDashboard = () => {
   const [settings, setSettings] = useState({});
   const barcodeInputRef = useRef(null);
   const [selectedProductForHistory, setSelectedProductForHistory] = useState(null);
+  const [productHistory, setProductHistory] = useState([]);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [isPartialPayment, setIsPartialPayment] = useState(false);
@@ -497,18 +499,21 @@ const CashierDashboard = () => {
   };
 
   // Use search results if available, otherwise fall back to client-side filtering
-  const filteredProducts = searchTerm && showProductSearch && searchResults.length > 0
-    ? searchResults
-    : products.filter(product =>
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.barcode?.includes(searchTerm) ||
-      product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.tire_size?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+  const filteredProducts = useMemo(() => {
+    return searchTerm && showProductSearch && searchResults.length > 0
+      ? searchResults
+      : products.filter(product =>
+        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.barcode?.includes(searchTerm) ||
+        product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.tire_size?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+  }, [searchTerm, showProductSearch, searchResults, products]);
 
-  const totals = calculateTotal();
+  const totals = useMemo(() => calculateTotal(), [cart, adminOverride, overrideDiscount, settings]);
+
 
   return (
     <>
