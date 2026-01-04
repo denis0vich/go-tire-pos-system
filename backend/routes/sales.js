@@ -369,12 +369,12 @@ router.get('/reports/summary', authenticateToken, requireAdmin, async (req, res)
             params.push(cashier_id);
         }
 
-        // Get summary statistics
+        // Get summary statistics (backward compatible with both tax_amount and vat_amount)
         const summary = await db.get(`
             SELECT 
                 COUNT(*) as total_sales,
                 SUM(total_amount) as total_revenue,
-                SUM(vat_amount) as total_tax,
+                COALESCE(SUM(vat_amount), SUM(tax_amount)) as total_tax,
                 SUM(discount_amount) as total_discounts,
                 AVG(total_amount) as average_sale
             FROM sales ${whereClause}
@@ -453,7 +453,7 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
                         DATE(created_at) as period,
                         COUNT(*) as sales_count,
                         SUM(total_amount) as revenue,
-                        SUM(vat_amount) as tax_collected,
+                        COALESCE(SUM(vat_amount), SUM(tax_amount)) as tax_collected,
                         SUM(discount_amount) as discounts_given,
                         AVG(total_amount) as avg_sale_amount
                     FROM sales 
@@ -467,7 +467,7 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
                         strftime('%Y-W%W', created_at) as period,
                         COUNT(*) as sales_count,
                         SUM(total_amount) as revenue,
-                        SUM(vat_amount) as tax_collected,
+                        COALESCE(SUM(vat_amount), SUM(tax_amount)) as tax_collected,
                         SUM(discount_amount) as discounts_given,
                         AVG(total_amount) as avg_sale_amount
                     FROM sales 
@@ -481,7 +481,7 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
                         strftime('%Y-%m', created_at) as period,
                         COUNT(*) as sales_count,
                         SUM(total_amount) as revenue,
-                        SUM(vat_amount) as tax_collected,
+                        COALESCE(SUM(vat_amount), SUM(tax_amount)) as tax_collected,
                         SUM(discount_amount) as discounts_given,
                         AVG(total_amount) as avg_sale_amount
                     FROM sales 
@@ -495,7 +495,7 @@ router.get('/reports/:period', authenticateToken, requireAdmin, async (req, res)
                         strftime('%Y', created_at) as period,
                         COUNT(*) as sales_count,
                         SUM(total_amount) as revenue,
-                        SUM(vat_amount) as tax_collected,
+                        COALESCE(SUM(vat_amount), SUM(tax_amount)) as tax_collected,
                         SUM(discount_amount) as discounts_given,
                         AVG(total_amount) as avg_sale_amount
                     FROM sales 

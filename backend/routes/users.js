@@ -134,12 +134,26 @@ router.patch('/theme-color', authenticateToken, async (req, res) => {
         }
 
         const db = new Database();
-        await db.run(
-            'UPDATE users SET theme_color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-            [theme_color, id]
-        );
 
-        res.json({ success: true, theme_color });
+        // Check if theme_color column exists (backward compatibility)
+        try {
+            const columns = await db.all(`PRAGMA table_info(users)`);
+            const hasThemeColor = columns.some(col => col.name === 'theme_color');
+
+            if (hasThemeColor) {
+                await db.run(
+                    'UPDATE users SET theme_color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    [theme_color, id]
+                );
+                res.json({ success: true, theme_color });
+            } else {
+                // Column doesn't exist yet, migration needed
+                res.json({ success: false, message: 'Database migration required. Theme color will be available after migration.' });
+            }
+        } catch (err) {
+            console.error('Theme color update error:', err);
+            res.status(500).json({ error: 'Failed to update theme color' });
+        }
     } catch (error) {
         console.error('Update theme color error:', error);
         res.status(500).json({ error: 'Internal server error' });
